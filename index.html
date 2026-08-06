@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>3D 당구 물리 시뮬레이터</title>
+    <link rel="icon" href="data:,">
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background-color: #111; color: #fff; font-family: sans-serif; overflow: hidden; width: 100vw; height: 100vh; }
@@ -40,8 +41,9 @@
         .formula { font-family: monospace; color: #2ecc71; font-weight: bold; }
         .guide-text { font-size: 11px; color: #3498db; margin-top: 6px; line-height: 1.4; }
     </style>
-    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
-    <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <!-- 고신뢰성 CDN 라이브러리 교체 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
 
@@ -53,9 +55,9 @@
             <p id="sysFormula">공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span></p>
             <p class="guide-text">
                 👉 <b>드래그 (빈 공간)</b>: 당구대 시점 회전<br>
-                🎱 <b>공 클릭 후 드래그</b>: 원하는 위치로 공 수동 배치<br>
-                🔮 <b>예상 경로</b>: 수구(흰색) 및 1적구(색상) 경로 예측<br>
-                🎯 <b>짧은 터치/클릭</b>: 목적구 조준
+                🎱 <b>공 클릭 후 드래그</b>: 공 수동 위치 이동<br>
+                🔮 <b>예상 경로</b>: 수구(흰색) 및 1적구(색상) 궤적<br>
+                🎯 <b>짧은 터치/클릭</b>: 목적구 정밀 조준
             </p>
         </div>
     </div>
@@ -192,9 +194,10 @@ function init3D() {
     createAimLines();   
     createBalls();      
 
-    viewport.addEventListener('pointerdown', onPointerDown);
-    viewport.addEventListener('pointermove', onPointerMove);
-    viewport.addEventListener('pointerup', onPointerUp);
+    const domCanvas = renderer.domElement;
+    domCanvas.addEventListener('pointerdown', onPointerDown);
+    domCanvas.addEventListener('pointermove', onPointerMove);
+    domCanvas.addEventListener('pointerup', onPointerUp);
 
     window.addEventListener('resize', onWindowResize);
     
@@ -364,11 +367,9 @@ function createBalls() {
 }
 
 function createAimLines() {
-    // 수구 예측 진행선 (흰색 점선)
     aimLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.4, gapSize: 0.2 }));
     scene.add(aimLine);
 
-    // 1적구 예측 진행선 (적구 색상 점선)
     objAimLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xff4444, dashSize: 0.4, gapSize: 0.2 }));
     scene.add(objAimLine);
 
@@ -464,7 +465,7 @@ function adjustAngle(delta) {
 function updateAimLine() {
     if (!cuePivot || !cueBall || !aimLine) return;
 
-    if (isSimulating || isReplaying || isDraggingBall) {
+    if (isSimulating || isReplaying) {
         cuePivot.visible = false;
         aimLine.visible = false;
         if(objAimLine) objAimLine.visible = false;
@@ -488,12 +489,14 @@ function updateAimLine() {
     runVirtualTrajectory(rad);
 }
 
-// 실시간 가상 물리 엔진 시뮬레이션 기반 '수구 + 1적구 예상 진행 경로' 시각화
 function runVirtualTrajectory(rad) {
+    if (!balls || balls.length === 0 || !cueBall) return;
+
     let vBalls = balls.map(b => ({
         pos: b.position.clone(),
         vel: new THREE.Vector3(0, 0, 0),
         r: tableSpec.ballR,
+        color: b.material.color.clone(),
         ref: b
     }));
 
@@ -505,8 +508,8 @@ function runVirtualTrajectory(rad) {
     let targetObjIndex = -1;
     let objPath = [];
 
-    const SUB_STEPS = 5;
-    const MAX_STEPS = 100;
+    const SUB_STEPS = 4;
+    const MAX_STEPS = 60;
 
     for (let step = 0; step < MAX_STEPS; step++) {
         for (let s = 0; s < SUB_STEPS; s++) {
@@ -534,7 +537,6 @@ function runVirtualTrajectory(rad) {
                 }
             });
 
-            // 가상 공간 탄성 충돌 계산
             for (let i = 0; i < vBalls.length; i++) {
                 for (let j = i + 1; j < vBalls.length; j++) {
                     let b1 = vBalls[i];
@@ -561,7 +563,7 @@ function runVirtualTrajectory(rad) {
                         b1.vel.x = vx2 * cos - vz1 * sin;
                         b1.vel.z = vz1 * cos + vx2 * sin;
                         b2.vel.x = vx1 * cos - vz2 * sin;
-                        b2.vel.z = vz1 * cos + vx1 * sin;
+                        b2.vel.z = vz2 * cos + vx1 * sin;
 
                         let overlap = minDist - dist;
                         b1.pos.x -= Math.cos(angle) * overlap / 2;
@@ -581,17 +583,21 @@ function runVirtualTrajectory(rad) {
         }
     }
 
-    aimLine.geometry.setFromPoints(cuePath);
-    if (aimLine.computeLineDistances) aimLine.computeLineDistances();
+    if (aimLine) {
+        aimLine.geometry.setFromPoints(cuePath);
+        if (aimLine.computeLineDistances) aimLine.computeLineDistances();
+        aimLine.visible = true;
+    }
 
-    if (targetObjIndex !== -1 && objPath.length > 0) {
-        let hitColor = vBalls[targetObjIndex].ref.material.color;
-        objAimLine.material.color = hitColor;
-        objAimLine.geometry.setFromPoints(objPath);
-        if (objAimLine.computeLineDistances) objAimLine.computeLineDistances();
-        objAimLine.visible = true;
-    } else {
-        if(objAimLine) objAimLine.visible = false;
+    if (objAimLine) {
+        if (targetObjIndex !== -1 && objPath.length > 1) {
+            objAimLine.material.color = vBalls[targetObjIndex].color;
+            objAimLine.geometry.setFromPoints(objPath);
+            if (objAimLine.computeLineDistances) objAimLine.computeLineDistances();
+            objAimLine.visible = true;
+        } else {
+            objAimLine.visible = false;
+        }
     }
 }
 
@@ -662,7 +668,6 @@ function calculateThickness(rad) {
     thicknessEl.style.color = color;
 }
 
-// 터치/클릭 마우스 이벤트 (공 수동 드래그 배치 처리 포함)
 function onPointerDown(event) {
     if (isSimulating || isReplaying || event.button !== 0) return;
 
@@ -677,7 +682,6 @@ function onPointerDown(event) {
     raycaster.setFromCamera(mouse, camera);
     const intersects = raycaster.intersectObjects(balls);
 
-    // 공을 클릭했을 때 드래그 모드 전환
     if (intersects.length > 0) {
         isDraggingBall = true;
         draggedBall = intersects[0].object;
@@ -704,21 +708,25 @@ function onPointerMove(event) {
         let newX = Math.max(-w, Math.min(w, targetPoint.x));
         let newZ = Math.max(-h, Math.min(h, targetPoint.z));
 
-        let valid = true;
+        draggedBall.position.x = newX;
+        draggedBall.position.z = newZ;
+
+        // 타 공 밀림 보정
         balls.forEach(other => {
             if (other !== draggedBall) {
-                let dist = Math.hypot(newX - other.position.x, newZ - other.position.z);
-                if (dist < tableSpec.ballR * 2.2) {
-                    valid = false;
+                let dx = other.position.x - draggedBall.position.x;
+                let dz = other.position.z - draggedBall.position.z;
+                let dist = Math.hypot(dx, dz);
+                let minDist = tableSpec.ballR * 2.1;
+                if (dist < minDist && dist > 0) {
+                    let angle = Math.atan2(dz, dx);
+                    other.position.x = draggedBall.position.x + Math.cos(angle) * minDist;
+                    other.position.z = draggedBall.position.z + Math.sin(angle) * minDist;
                 }
             }
         });
 
-        if (valid) {
-            draggedBall.position.x = newX;
-            draggedBall.position.z = newZ;
-            updateAimLine();
-        }
+        updateAimLine();
     }
 }
 
@@ -728,7 +736,6 @@ function onPointerUp(event) {
         draggedBall = null;
         if (controls) controls.enabled = true;
 
-        // 수동 변경 배치를 기억에 반영
         savedBallPositions = balls.map(b => ({ x: b.position.x, z: b.position.z }));
         updateAimLine();
         return;

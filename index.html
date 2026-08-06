@@ -486,7 +486,6 @@ function updateAimLine() {
     calculateThickness(rad);
 }
 
-// 조준선 상의 모든 목적구 실시간 정밀 겨냥 감지 로직
 function calculateThickness(rad) {
     if (!cueBall || !balls || balls.length === 0) return;
 
@@ -500,13 +499,12 @@ function calculateThickness(rad) {
     let closestHit = null;
     let minT = Infinity;
 
-    // 수구를 제외한 모든 공 충돌 탐색
     balls.forEach(ball => {
         if (ball === cueBall) return;
 
         const dx = ball.position.x - cueBall.position.x;
         const dz = ball.position.z - cueBall.position.z;
-        const t = dx * dirX + dz * dirZ; // 조준 방향 전방 거리
+        const t = dx * dirX + dz * dirZ;
 
         if (t > 0) {
             const vDistSq = (dx * dx + dz * dz) - (t * t);
@@ -528,7 +526,6 @@ function calculateThickness(rad) {
         return;
     }
 
-    // 겨냥된 공 이름/색상 확인
     let ballName = "목적구";
     let ballColorHex = closestHit.ball.material.color.getHex();
     if (ballColorHex === 0xcc1111) {
@@ -608,38 +605,57 @@ function shoot() {
     updateAimLine();
 }
 
+// 서브스텝(Sub-stepping) 정밀 물리 엔진 적용 (터널링 관통 버그 완벽 방지)
 function updatePhysics() {
     if (!isSimulating) return;
     let moving = false;
+    const SUB_STEPS = 10; // 1프레임을 10회 정밀 분할 계산
 
+    for (let step = 0; step < SUB_STEPS; step++) {
+        balls.forEach(ball => {
+            let vX = ball.userData.vx / SUB_STEPS;
+            let vZ = ball.userData.vz / SUB_STEPS;
+
+            if (Math.hypot(ball.userData.vx, ball.userData.vz) > 0.001) {
+                moving = true;
+                ball.position.x += vX;
+                ball.position.z += vZ;
+
+                // 마찰 감쇄 (서브스텝 분할 반영)
+                ball.userData.vx *= Math.pow(tableSpec.friction, 1 / SUB_STEPS);
+                ball.userData.vz *= Math.pow(tableSpec.friction, 1 / SUB_STEPS);
+
+                const wB = tableSpec.width / 2 - tableSpec.ballR;
+                const hB = tableSpec.height / 2 - tableSpec.ballR;
+
+                if (Math.abs(ball.position.x) > wB) {
+                    ball.position.x = Math.sign(ball.position.x) * wB;
+                    ball.userData.vx = -ball.userData.vx * tableSpec.cushionElasticity;
+                }
+                if (Math.abs(ball.position.z) > hB) {
+                    ball.position.z = Math.sign(ball.position.z) * hB;
+                    ball.userData.vz = -ball.userData.vz * tableSpec.cushionElasticity;
+                }
+            }
+        });
+
+        // 서브스텝 단위 충돌 감지 및 튕김 계산
+        for (let i = 0; i < balls.length; i++) {
+            for (let j = i + 1; j < balls.length; j++) {
+                checkBallCollision(balls[i], balls[j]);
+            }
+        }
+    }
+
+    // 프레임당 1회 상태 녹화 및 궤적 잔상 생성
     const currentFrame = balls.map(b => ({ x: b.position.x, y: b.position.y, z: b.position.z }));
     recordedFrames.push(currentFrame);
 
     balls.forEach(ball => {
-        let vX = ball.userData.vx, vZ = ball.userData.vz;
-        if (Math.hypot(vX, vZ) > 0.001) {
-            moving = true;
+        if (Math.hypot(ball.userData.vx, ball.userData.vz) > 0.001) {
             createTrailPoint(ball.position.clone(), ball.material.color);
-            ball.position.x += vX; ball.position.z += vZ;
-            ball.userData.vx *= tableSpec.friction; ball.userData.vz *= tableSpec.friction;
-
-            const wB = tableSpec.width/2 - tableSpec.ballR, hB = tableSpec.height/2 - tableSpec.ballR;
-            if (Math.abs(ball.position.x) > wB) {
-                ball.position.x = Math.sign(ball.position.x) * wB;
-                ball.userData.vx = -ball.userData.vx * tableSpec.cushionElasticity;
-            }
-            if (Math.abs(ball.position.z) > hB) {
-                ball.position.z = Math.sign(ball.position.z) * hB;
-                ball.userData.vz = -ball.userData.vz * tableSpec.cushionElasticity;
-            }
         }
     });
-
-    for (let i = 0; i < balls.length; i++) {
-        for (let j = i + 1; j < balls.length; j++) {
-            checkBallCollision(balls[i], balls[j]);
-        }
-    }
 
     if (!moving) {
         isSimulating = false;

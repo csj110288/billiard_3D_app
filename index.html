@@ -20,6 +20,8 @@
         select, input[type="range"] { width: 100%; padding: 6px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; }
         .val-disp { font-size: 11px; color: #3498db; text-align: right; }
         .thick-disp { font-size: 12px; color: #f1c40f; font-weight: bold; text-align: right; }
+        .score-disp { font-size: 13px; font-weight: bold; text-align: center; padding: 4px; border-radius: 4px; }
+        
         .btn-group { display: flex; gap: 6px; margin-top: 4px; }
         button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         button:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -41,7 +43,6 @@
         .formula { font-family: monospace; color: #2ecc71; font-weight: bold; }
         .guide-text { font-size: 11px; color: #3498db; margin-top: 6px; line-height: 1.4; }
     </style>
-    <!-- 고신뢰성 CDN 라이브러리 교체 -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
@@ -56,7 +57,7 @@
             <p class="guide-text">
                 👉 <b>드래그 (빈 공간)</b>: 당구대 시점 회전<br>
                 🎱 <b>공 클릭 후 드래그</b>: 공 수동 위치 이동<br>
-                🔮 <b>예상 경로</b>: 수구(흰색) 및 1적구(색상) 궤적<br>
+                🔊 <b>사운드 & 득점 판정</b>: 충돌 사운드 및 3쿠션 자동 판정<br>
                 🎯 <b>짧은 터치/클릭</b>: 목적구 정밀 조준
             </p>
         </div>
@@ -65,6 +66,11 @@
     <div id="sidebar">
         <h2>🎱 3D 당구 시뮬레이터</h2>
         
+        <div class="group" style="background: #252525; padding: 10px; border-radius: 6px; border: 1px solid #444;">
+            <label>🏆 3쿠션 득점 판정:</label>
+            <div id="scoreDisp" class="score-disp" style="color: #888;">대기 중</div>
+        </div>
+
         <div class="group">
             <label for="gameMode">게임 종목 선택</label>
             <select id="gameMode" onchange="changeGameMode()">
@@ -160,6 +166,85 @@ let mouse = new THREE.Vector2();
 
 let pointerStartX = 0;
 let pointerStartY = 0;
+
+// 웹 오디오 사운드 합성 엔진
+let audioCtx = null;
+
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+}
+
+function playCollisionSound(speed, isCushion = false) {
+    if (!audioCtx) return;
+    try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const now = audioCtx.currentTime;
+
+        const intensity = Math.min(Math.max(speed * 1.5, 0.05), 1.0);
+
+        if (isCushion) {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(280, now);
+            osc.frequency.exponentialRampToValueAtTime(70, now + 0.08);
+            gain.gain.setValueAtTime(intensity * 0.6, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        } else {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1300 + Math.random() * 150, now);
+            osc.frequency.exponentialRampToValueAtTime(120, now + 0.05);
+            gain.gain.setValueAtTime(intensity, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        }
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.09);
+    } catch(e) {}
+}
+
+// 3쿠션 득점 판정 변수
+let cushionHitCount = 0;
+let hitObjects = [];
+let scoreStatus = "NONE"; // "NONE", "SUCCESS", "FAIL"
+
+function resetShotScoring() {
+    cushionHitCount = 0;
+    hitObjects = [];
+    scoreStatus = "NONE";
+    updateScoringHUD();
+}
+
+function updateScoringHUD() {
+    const scoreEl = document.getElementById('scoreDisp');
+    if (!scoreEl) return;
+
+    if (currentGameMode !== '3ball') {
+        scoreEl.innerText = "4구 모드 (자유 연습)";
+        scoreEl.style.color = "#aaa";
+        return;
+    }
+
+    if (isSimulating) {
+        scoreEl.innerText = `쿠션: ${cushionHitCount}회 | 목적구: ${hitObjects.length}/2`;
+        scoreEl.style.color = "#f1c40f";
+    } else if (scoreStatus === "SUCCESS") {
+        scoreEl.innerText = "🎉 득점 성공! (3쿠션 달성)";
+        scoreEl.style.color = "#2ecc71";
+    } else if (scoreStatus === "FAIL") {
+        scoreEl.innerText = `❌ 득점 실패 (쿠션: ${cushionHitCount}회)`;
+        scoreEl.style.color = "#e74c3c";
+    } else {
+        scoreEl.innerText = "대기 중";
+        scoreEl.style.color = "#888";
+    }
+}
 
 function init3D() {
     const viewport = document.getElementById('viewport');
@@ -383,6 +468,7 @@ function resetBalls(isRandom = false) {
     recordedFrames = [];
     document.getElementById('btnReplay').disabled = true;
     clearTrails();
+    resetShotScoring();
 
     const w = tableSpec.width, h = tableSpec.height;
     const r = tableSpec.ballR;
@@ -711,7 +797,6 @@ function onPointerMove(event) {
         draggedBall.position.x = newX;
         draggedBall.position.z = newZ;
 
-        // 타 공 밀림 보정
         balls.forEach(other => {
             if (other !== draggedBall) {
                 let dx = other.position.x - draggedBall.position.x;
@@ -772,6 +857,9 @@ function onPointerUp(event) {
 function shoot() {
     if (isSimulating || isReplaying) return;
     
+    initAudio();
+    resetShotScoring();
+
     recordedFrames = [];
     document.getElementById('btnReplay').disabled = true;
 
@@ -782,6 +870,9 @@ function shoot() {
     cueBall.userData.vz = Math.sin(rad) * power;
     cueBall.userData.spinX = parseFloat(document.getElementById('spinX').value);
     cueBall.userData.spinY = parseFloat(document.getElementById('spinY').value);
+
+    // 타격음 (큐대 샷 사운드)
+    playCollisionSound(power * 1.2, false);
 
     isSimulating = true;
     updateAimLine();
@@ -808,13 +899,25 @@ function updatePhysics() {
                 const wB = tableSpec.width / 2 - tableSpec.ballR;
                 const hB = tableSpec.height / 2 - tableSpec.ballR;
 
+                let hitCushion = false;
                 if (Math.abs(ball.position.x) > wB) {
                     ball.position.x = Math.sign(ball.position.x) * wB;
                     ball.userData.vx = -ball.userData.vx * tableSpec.cushionElasticity;
+                    hitCushion = true;
                 }
                 if (Math.abs(ball.position.z) > hB) {
                     ball.position.z = Math.sign(ball.position.z) * hB;
                     ball.userData.vz = -ball.userData.vz * tableSpec.cushionElasticity;
+                    hitCushion = true;
+                }
+
+                if (hitCushion) {
+                    let curSpeed = Math.hypot(ball.userData.vx, ball.userData.vz);
+                    playCollisionSound(curSpeed, true);
+                    if (ball === cueBall) {
+                        cushionHitCount++;
+                        updateScoringHUD();
+                    }
                 }
             }
         });
@@ -837,6 +940,11 @@ function updatePhysics() {
 
     if (!moving) {
         isSimulating = false;
+        if (scoreStatus !== "SUCCESS") {
+            scoreStatus = "FAIL";
+        }
+        updateScoringHUD();
+
         if (recordedFrames.length > 0) {
             document.getElementById('btnReplay').disabled = false;
         }
@@ -881,6 +989,23 @@ function checkBallCollision(b1, b2) {
     const minDist = tableSpec.ballR * 2;
 
     if (dist < minDist) {
+        let relSpeed = Math.hypot(b1.userData.vx - b2.userData.vx, b1.userData.vz - b2.userData.vz);
+        playCollisionSound(relSpeed, false);
+
+        // 3쿠션 득점 로직 판정
+        if (b1 === cueBall || b2 === cueBall) {
+            let targetObj = (b1 === cueBall) ? b2 : b1;
+            if (!hitObjects.includes(targetObj)) {
+                hitObjects.push(targetObj);
+                if (hitObjects.length === 2) {
+                    if (cushionHitCount >= 3) {
+                        scoreStatus = "SUCCESS";
+                    }
+                }
+                updateScoringHUD();
+            }
+        }
+
         const angle = Math.atan2(dz, dx);
         const sin = Math.sin(angle), cos = Math.cos(angle);
 

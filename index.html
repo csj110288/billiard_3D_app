@@ -25,8 +25,11 @@
         .btn-shoot { background: #27ae60; color: white; }
         .btn-replay { background: #8e44ad; color: white; }
         .btn-replay:hover:not(:disabled) { background: #9b59b6; }
-        .btn-reset { background: #e74c3c; color: white; }
-        .btn-clear { background: #f39c12; color: white; }
+        .btn-reset { background: #e67e22; color: white; }
+        .btn-reset:hover { background: #d35400; }
+        .btn-repeat { background: #2980b9; color: white; }
+        .btn-repeat:hover { background: #3498db; }
+        .btn-clear { background: #7f8c8d; color: white; }
         
         #hud-overlay { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.85); padding: 12px; border-radius: 8px; border: 1px solid #444; pointer-events: none; max-width: 360px; z-index: 10; }
         #hud-overlay h3 { font-size: 14px; color: #f1c40f; margin-bottom: 4px; }
@@ -48,7 +51,7 @@
             <p class="guide-text">
                 👉 <b>드래그 (손가락/마우스 이동)</b>: 당구대 시점 회전<br>
                 🎯 <b>짧은 터치/클릭</b>: 목적구 또는 원하는 지점 조준<br>
-                🎬 <b>샷 완료 후</b>: 슬로우 다시보기로 궤적 확인 가능
+                🔄 <b>동일 배치 반복</b>: 이전 난구를 동일 위치에서 반복 연습
             </p>
         </div>
     </div>
@@ -109,10 +112,13 @@
 
         <div class="btn-group">
             <button class="btn-shoot" onclick="shoot()">샷 실행</button>
-            <button class="btn-replay" id="btnReplay" onclick="playSlowReplay()" disabled>🎬 슬로우 다시보기 (0.3x)</button>
+            <button class="btn-replay" id="btnReplay" onclick="playSlowReplay()" disabled>🎬 슬로우 (0.3x)</button>
         </div>
         <div class="btn-group">
-            <button class="btn-reset" onclick="resetBalls()">위치 리셋</button>
+            <button class="btn-reset" onclick="resetBalls(true)">🎲 랜덤 배치</button>
+            <button class="btn-repeat" onclick="resetBalls(false)">🔄 동일 배치 반복</button>
+        </div>
+        <div class="btn-group">
             <button class="btn-clear" onclick="clearTrails()">궤적 잔상 지우기</button>
         </div>
     </div>
@@ -124,6 +130,9 @@ let tableGroup, cuePivot, cueGroup, aimLine, theoryLine;
 let cueBall, objectBall1, objectBall2, objectBall3;
 let balls = [];
 let ballTrails = [];
+
+// 직전 배치 상태 저장을 위한 메모리 변수
+let savedBallPositions = [];
 
 let recordedFrames = [];
 let isReplaying = false;
@@ -338,7 +347,7 @@ function createBalls() {
         scene.add(b);
     });
 
-    resetBalls();
+    resetBalls(true); // 최초 생성 시 랜덤 배치 생성
 }
 
 function createAimLines() {
@@ -348,27 +357,52 @@ function createAimLines() {
     scene.add(theoryLine);
 }
 
-function resetBalls() {
+// isRandom = true: 새로운 랜덤 배치 생성 / false: 기존 저장된 배치 반복
+function resetBalls(isRandom = false) {
     isSimulating = false;
     isReplaying = false;
     recordedFrames = [];
     document.getElementById('btnReplay').disabled = true;
     clearTrails();
-    
-    const w = tableSpec.width, h = tableSpec.height;
 
-    if (currentGameMode === '3ball') {
-        cueBall.position.set(-w/4, tableSpec.ballR, h/4);
-        objectBall1.position.set(w/4, tableSpec.ballR, -h/6);
-        objectBall2.position.set(w/3, tableSpec.ballR, h/3);
-    } else {
-        cueBall.position.set(-w/4, tableSpec.ballR, h/4);
-        objectBall2.position.set(-w/4, tableSpec.ballR, -h/4);
-        objectBall1.position.set(w/4, tableSpec.ballR, 0);
-        objectBall3.position.set(w/3, tableSpec.ballR, -h/4);
+    const w = tableSpec.width, h = tableSpec.height;
+    const r = tableSpec.ballR;
+    const margin = r * 3;
+    const minX = -w/2 + margin, maxX = w/2 - margin;
+    const minZ = -h/2 + margin, maxZ = h/2 - margin;
+
+    if (isRandom || savedBallPositions.length !== balls.length) {
+        // 공 겹침 없는 정밀 랜덤 좌표 생성
+        savedBallPositions = [];
+        balls.forEach(() => {
+            let posX, posZ, valid;
+            let attempts = 0;
+            do {
+                valid = true;
+                posX = minX + Math.random() * (maxX - minX);
+                posZ = minZ + Math.random() * (maxZ - minZ);
+                for (let p of savedBallPositions) {
+                    if (Math.hypot(posX - p.x, posZ - p.z) < r * 2.8) {
+                        valid = false;
+                        break;
+                    }
+                }
+                attempts++;
+            } while (!valid && attempts < 300);
+
+            savedBallPositions.push({ x: posX, z: posZ });
+        });
     }
 
-    balls.forEach(b => { b.userData.vx = 0; b.userData.vz = 0; });
+    // 저장된 배치 적용
+    balls.forEach((ball, idx) => {
+        if (savedBallPositions[idx]) {
+            ball.position.set(savedBallPositions[idx].x, r, savedBallPositions[idx].z);
+        }
+        ball.userData.vx = 0;
+        ball.userData.vz = 0;
+    });
+
     updateAimLine();
 }
 
@@ -431,11 +465,9 @@ function updateAimLine() {
     aimLine.geometry.setFromPoints([p1, p2]);
     if (aimLine.computeLineDistances) aimLine.computeLineDistances();
 
-    // 1목적구 두께 계산
     calculateThickness(rad);
 }
 
-// 1목적구 겨냥 두께 정밀 계산 로직 (0.5/8 ~ 8/8)
 function calculateThickness(rad) {
     if (!objectBall1 || !cueBall) return;
 
@@ -446,7 +478,6 @@ function calculateThickness(rad) {
     const dirX = Math.cos(rad);
     const dirZ = Math.sin(rad);
 
-    // 조준선 기준 사거리 (전방 거리)
     const t = dx * dirX + dz * dirZ;
 
     if (t <= 0) {
@@ -455,10 +486,9 @@ function calculateThickness(rad) {
         return;
     }
 
-    // 조준선과 1목적구 중심 간의 수직 거리 계산
     const vDistSq = (dx * dx + dz * dz) - (t * t);
     const vDist = Math.sqrt(Math.max(0, vDistSq));
-    const maxDist = tableSpec.ballR * 2; // 두 공 직경 기준 거리
+    const maxDist = tableSpec.ballR * 2;
 
     if (vDist >= maxDist) {
         thicknessEl.innerText = "맞지 않음 (빗나감)";
@@ -466,42 +496,20 @@ function calculateThickness(rad) {
         return;
     }
 
-    // 겹침 비율 (1.0 = 정면, 0.0 = 스침)
     const overlap = 1 - (vDist / maxDist);
     let thickText = "";
     let color = "#2ecc71";
 
-    if (overlap >= 0.9375) {
-        thickText = "8/8 두께 (100% 정면)";
-        color = "#e74c3c";
-    } else if (overlap >= 0.8125) {
-        thickText = "7/8 두께";
-        color = "#e67e22";
-    } else if (overlap >= 0.6875) {
-        thickText = "6/8 두께 (3/4 두께)";
-        color = "#f1c40f";
-    } else if (overlap >= 0.5625) {
-        thickText = "5/8 두께";
-        color = "#f39c12";
-    } else if (overlap >= 0.4375) {
-        thickText = "4/8 두께 (1/2 반두께)";
-        color = "#2ecc71";
-    } else if (overlap >= 0.3125) {
-        thickText = "3/8 두께";
-        color = "#1abc9c";
-    } else if (overlap >= 0.1875) {
-        thickText = "2/8 두께 (1/4 두께)";
-        color = "#3498db";
-    } else if (overlap >= 0.09375) {
-        thickText = "1/8 두께";
-        color = "#9b59b6";
-    } else if (overlap >= 0.02) {
-        thickText = "0.5/8 두께 (얇게)";
-        color = "#e84393";
-    } else {
-        thickText = "맞지 않음 (스침)";
-        color = "#888";
-    }
+    if (overlap >= 0.9375) { thickText = "8/8 두께 (100% 정면)"; color = "#e74c3c"; }
+    else if (overlap >= 0.8125) { thickText = "7/8 두께"; color = "#e67e22"; }
+    else if (overlap >= 0.6875) { thickText = "6/8 두께 (3/4 두께)"; color = "#f1c40f"; }
+    else if (overlap >= 0.5625) { thickText = "5/8 두께"; color = "#f39c12"; }
+    else if (overlap >= 0.4375) { thickText = "4/8 두께 (1/2 반두께)"; color = "#2ecc71"; }
+    else if (overlap >= 0.3125) { thickText = "3/8 두께"; color = "#1abc9c"; }
+    else if (overlap >= 0.1875) { thickText = "2/8 두께 (1/4 두께)"; color = "#3498db"; }
+    else if (overlap >= 0.09375) { thickText = "1/8 두께"; color = "#9b59b6"; }
+    else if (overlap >= 0.02) { thickText = "0.5/8 두께 (얇게)"; color = "#e84393"; }
+    else { thickText = "맞지 않음 (스침)"; color = "#888"; }
 
     thicknessEl.innerText = thickText;
     thicknessEl.style.color = color;

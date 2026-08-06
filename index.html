@@ -43,7 +43,7 @@
             <p id="sysFormula">공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span></p>
             <p class="guide-text">
                 👉 <b>드래그 (손가락/마우스 이동)</b>: 당구대 시점 회전<br>
-                🎯 <b>짧은 터치/클릭</b>: 1목적구 또는 원하는 지점 조준
+                🎯 <b>짧은 터치/클릭</b>: 목적구 또는 원하는 지점 조준
             </p>
         </div>
     </div>
@@ -51,6 +51,14 @@
     <div id="sidebar">
         <h2>🎱 3D 당구 시뮬레이터</h2>
         
+        <div class="group">
+            <label for="gameMode">게임 종목 선택</label>
+            <select id="gameMode" onchange="changeGameMode()">
+                <option value="3ball">3구 쓰리쿠션 (공 3개 / 61.5mm)</option>
+                <option value="4ball">4구 당구 (공 4개 / 65.5mm)</option>
+            </select>
+        </div>
+
         <div class="group">
             <label for="tableType">당구대 규격</label>
             <select id="tableType" onchange="changeTableType()">
@@ -101,14 +109,18 @@
 
 <script>
 let scene, camera, renderer, controls;
-let tableGroup, cueBall, objectBall1, objectBall2, cuePivot, cueGroup, aimLine, theoryLine;
+let tableGroup, cuePivot, cueGroup, aimLine, theoryLine;
+let cueBall, objectBall1, objectBall2, objectBall3; // 공 객체들
+let balls = []; // 활성화된 전체 공 배열
 let ballTrails = [];
+
+// 종목 및 테이블 스펙 (3구: 반지름 0.3075, 4구: 반지름 0.3275)
+let currentGameMode = '3ball';
 let tableSpec = { width: 28.44, height: 14.22, ballR: 0.3075, friction: 0.991, cushionElasticity: 0.82 };
 let isSimulating = false;
 let raycaster = new THREE.Raycaster();
 let mouse = new THREE.Vector2();
 
-// 입력 동작 구분을 위한 좌표 변수
 let pointerStartX = 0;
 let pointerStartY = 0;
 
@@ -145,7 +157,6 @@ function init3D() {
     createAimLines();   
     createBalls();      
 
-    // 드래그(시점 회전)와 클릭(조준) 이벤트를 구분하기 위한 이벤트 바인딩
     viewport.addEventListener('pointerdown', onPointerDown);
     viewport.addEventListener('pointerup', onPointerUp);
 
@@ -153,7 +164,7 @@ function init3D() {
     
     updatePowerLabel(document.getElementById('power').value);
     updateSpinXLabel(document.getElementById('spinX').value);
-    updateSpinYLabel(document.getElementById('spinY').value);
+    updateSpinYLabel(document.getElementById('spinY}.value'));
     updateSystemHUD();
     
     animate();
@@ -289,18 +300,32 @@ function createCueStick() {
     cuePivot.add(cueGroup);
 }
 
+// 3구/4구 종목 선택에 따른 공 생성 로직
 function createBalls() {
+    // 기존 공 제거
+    balls.forEach(b => scene.remove(b));
+    balls = [];
+
     const r = tableSpec.ballR;
     const geo = new THREE.SphereGeometry(r, 32, 32);
 
-    cueBall = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1 }));
-    objectBall1 = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.1 }));
-    objectBall2 = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xf1c40f, roughness: 0.1 }));
+    cueBall = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1 }));    // 흰 공
+    objectBall1 = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.1 }));// 빨간 공 1
+    objectBall2 = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xf1c40f, roughness: 0.1 }));// 노란 공
 
-    [cueBall, objectBall1, objectBall2].forEach(b => {
+    balls = [cueBall, objectBall1, objectBall2];
+
+    // 4구 선택 시 빨간 공 2 추가
+    if (currentGameMode === '4ball') {
+        objectBall3 = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.1 })); // 빨간 공 2
+        balls.push(objectBall3);
+    }
+
+    balls.forEach(b => {
         b.userData = { vx: 0, vz: 0, spinX: 0, spinY: 0 };
         scene.add(b);
     });
+
     resetBalls();
 }
 
@@ -313,13 +338,49 @@ function createAimLines() {
 
 function resetBalls() {
     isSimulating = false;
+    clearTrails();
     const w = tableSpec.width, h = tableSpec.height;
-    cueBall.position.set(-w/4, tableSpec.ballR, h/4);
-    objectBall1.position.set(w/4, tableSpec.ballR, -h/6);
-    objectBall2.position.set(w/3, tableSpec.ballR, h/3);
 
-    [cueBall, objectBall1, objectBall2].forEach(b => { b.userData.vx = 0; b.userData.vz = 0; });
+    if (currentGameMode === '3ball') {
+        cueBall.position.set(-w/4, tableSpec.ballR, h/4);
+        objectBall1.position.set(w/4, tableSpec.ballR, -h/6);
+        objectBall2.position.set(w/3, tableSpec.ballR, h/3);
+    } else {
+        // 4구 기본 배치
+        cueBall.position.set(-w/4, tableSpec.ballR, h/4);         // 수구(흰 공)
+        objectBall2.position.set(-w/4, tableSpec.ballR, -h/4);       // 상대 수구(노란 공)
+        objectBall1.position.set(w/4, tableSpec.ballR, 0);          // 목적구(빨간 공 1)
+        objectBall3.position.set(w/3, tableSpec.ballR, -h/4);        // 목적구(빨간 공 2)
+    }
+
+    balls.forEach(b => { b.userData.vx = 0; b.userData.vz = 0; });
     updateAimLine();
+}
+
+function changeGameMode() {
+    currentGameMode = document.getElementById('gameMode').value;
+    const tableTypeSelect = document.getElementById('tableType');
+
+    if (currentGameMode === '4ball') {
+        tableTypeSelect.value = 'joongdae'; // 4구는 중대 기본 적용
+        tableSpec = { width: 24.4, height: 12.2, ballR: 0.3275, friction: 0.984, cushionElasticity: 0.73 };
+    } else {
+        tableTypeSelect.value = 'daeda';    // 3구는 대대 기본 적용
+        tableSpec = { width: 28.44, height: 14.22, ballR: 0.3075, friction: 0.991, cushionElasticity: 0.82 };
+    }
+
+    buildTable();
+    createBalls();
+}
+
+function changeTableType() {
+    const type = document.getElementById('tableType').value;
+    const ballR = (currentGameMode === '4ball') ? 0.3275 : 0.3075;
+    tableSpec = (type === 'daeda') 
+        ? { width: 28.44, height: 14.22, ballR: ballR, friction: 0.991, cushionElasticity: 0.82 } 
+        : { width: 24.4, height: 12.2, ballR: ballR, friction: 0.984, cushionElasticity: 0.73 };
+    buildTable(); 
+    createBalls();
 }
 
 function updateAimLine() {
@@ -356,19 +417,16 @@ function updateAimLine() {
     if (aimLine.computeLineDistances) aimLine.computeLineDistances();
 }
 
-// 터치/클릭 시작 지점 기록
 function onPointerDown(event) {
     pointerStartX = event.clientX;
     pointerStartY = event.clientY;
 }
 
-// 터치/클릭 종료 시 드래그 거리 판별
 function onPointerUp(event) {
     if (isSimulating || event.button !== 0) return;
 
     const moveDistance = Math.hypot(event.clientX - pointerStartX, event.clientY - pointerStartY);
 
-    // 드래그 거리가 6px 미만인 '짧은 터치/클릭'인 경우에만 조준점 변경
     if (moveDistance < 6) {
         const viewport = document.getElementById('viewport');
         const rect = viewport.getBoundingClientRect();
@@ -408,7 +466,6 @@ function shoot() {
 
 function updatePhysics() {
     if (!isSimulating) return;
-    const balls = [cueBall, objectBall1, objectBall2];
     let moving = false;
 
     balls.forEach(ball => {
@@ -431,6 +488,7 @@ function updatePhysics() {
         }
     });
 
+    // 전체 활성화된 공 간 충돌 처리 (3개 또는 4개)
     for (let i = 0; i < balls.length; i++) {
         for (let j = i + 1; j < balls.length; j++) {
             checkBallCollision(balls[i], balls[j]);
@@ -473,7 +531,7 @@ function createTrailPoint(pos, color) {
     mesh.position.copy(pos);
     scene.add(mesh);
     ballTrails.push(mesh);
-    if (ballTrails.length > 300) scene.remove(ballTrails.shift());
+    if (ballTrails.length > 400) scene.remove(ballTrails.shift());
 }
 
 function clearTrails() {
@@ -487,12 +545,6 @@ function updateSystemHUD() {
     if (mode === 'fiveHalf') { t.innerText = "파이브 앤 하프 시스템"; f.innerHTML = '공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span>'; }
     else if (mode === 'plus') { t.innerText = "플러스 시스템"; f.innerHTML = '공식: <span class="formula">1쿠션 = 수구 수 + 3쿠션 수</span>'; }
     else { t.innerText = "기본 가이드 모드"; f.innerHTML = '공식: <span class="formula">입사각 = 반사각</span>'; }
-}
-
-function changeTableType() {
-    const type = document.getElementById('tableType').value;
-    tableSpec = (type === 'daeda') ? { width: 28.44, height: 14.22, ballR: 0.3075, friction: 0.991, cushionElasticity: 0.82 } : { width: 24.4, height: 12.2, ballR: 0.3275, friction: 0.984, cushionElasticity: 0.73 };
-    buildTable(); resetBalls();
 }
 
 function updatePowerLabel(v) {

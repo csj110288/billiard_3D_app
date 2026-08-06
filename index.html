@@ -185,16 +185,19 @@ function buildTable() {
         tableGroup.add(leg);
     });
 
+    // 다이아몬드 포인트 (모퉁이 끝점 0~8, 0~4 포함)
     const pointMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const pointGeo = new THREE.SphereGeometry(0.12, 12, 12);
     const surfaceY = heightLevel - 0.1 + 0.01;
 
-    for(let i = 1; i < 8; i++) {
+    // 장쿠션 8등분 포인트 (0, 1, 2, 3, 4, 5, 6, 7, 8)
+    for(let i = 0; i <= 8; i++) {
         let x = -w/2 + (w/8) * i;
         let p1 = new THREE.Mesh(pointGeo, pointMat); p1.position.set(x, surfaceY, -h/2 - railThick/2); tableGroup.add(p1);
         let p2 = new THREE.Mesh(pointGeo, pointMat); p2.position.set(x, surfaceY, h/2 + railThick/2); tableGroup.add(p2);
     }
-    for(let j = 1; j < 4; j++) {
+    // 단쿠션 4등분 포인트 (0, 1, 2, 3, 4)
+    for(let j = 0; j <= 4; j++) {
         let z = -h/2 + (h/4) * j;
         let p1 = new THREE.Mesh(pointGeo, pointMat); p1.position.set(w/2 + railThick/2, surfaceY, z); tableGroup.add(p1);
         let p2 = new THREE.Mesh(pointGeo, pointMat); p2.position.set(-w/2 - railThick/2, surfaceY, z); tableGroup.add(p2);
@@ -285,7 +288,6 @@ function resetBalls() {
     updateAimLine();
 }
 
-// 큐대 및 수구 진행선 회전각 좌표계 수정
 function updateAimLine() {
     if (!cuePivot || !cueBall || !aimLine) return;
 
@@ -302,17 +304,14 @@ function updateAimLine() {
     const angleDeg = parseFloat(document.getElementById('aimAngle').value);
     const rad = (angleDeg * Math.PI) / 180;
 
-    // 수구 위치에 피벗 정렬 및 큐대 뒤쪽 배치 회전 (-rad - Math.PI / 2)
     cuePivot.position.copy(cueBall.position);
     cuePivot.rotation.y = -rad - Math.PI / 2;
 
     cueGroup.position.set(0, 0.08, 0.2);
     cueGroup.rotation.x = -0.08; 
 
-    // 전방 진행 방향 벡터
     const aimDir = new THREE.Vector3(Math.cos(rad), 0, Math.sin(rad));
 
-    // 수구 중심(또는 팁 끝)에서 시작하여 타격 전방으로 연장되는 진행선
     const p1 = cueBall.position.clone();
     p1.y = tableSpec.ballR;
 

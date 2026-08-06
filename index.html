@@ -143,26 +143,21 @@ function init3D() {
     animate();
 }
 
-// 1. 단차 없는 당구대 프레임 및 테두리 다이아몬드 포인트
 function buildTable() {
     if(tableGroup) scene.remove(tableGroup);
     tableGroup = new THREE.Group();
 
     const w = tableSpec.width, h = tableSpec.height;
     const railThick = 1.8;
-    const heightLevel = 0.5; // 쿠션과 프레임 통일 높이
+    const heightLevel = 0.5;
 
-    // 라사지 바닥
     const feltMat = new THREE.MeshStandardMaterial({ color: 0x1b7d42, roughness: 0.4 });
     const feltBed = new THREE.Mesh(new THREE.BoxGeometry(w, 0.2, h), feltMat);
     feltBed.position.y = -0.1;
     tableGroup.add(feltBed);
 
-    // 쿠션 (내각 고무 쿠션) - 단차 없이 높이 맞춤
-    const cushionMat = new THREE.MeshStandardMaterial({ color: 0x145a32, roughness: 0.3 });
     const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a2a18, roughness: 0.2 });
 
-    // 테두리 프레임 (쿠션과 동일 높이 $Y=0.25$)
     const frameNorth = new THREE.Mesh(new THREE.BoxGeometry(w + railThick*2, heightLevel, railThick), woodMat);
     frameNorth.position.set(0, heightLevel/2 - 0.1, -h/2 - railThick/2);
     tableGroup.add(frameNorth);
@@ -179,7 +174,6 @@ function buildTable() {
     frameWest.position.set(-w/2 - railThick/2, heightLevel/2 - 0.1, 0);
     tableGroup.add(frameWest);
 
-    // 당구대 다리
     const legGeo = new THREE.CylinderGeometry(1.2, 0.8, 10, 16);
     const legPositions = [
         [-w/2 - 0.5, -5.2, -h/2 - 0.5], [w/2 + 0.5, -5.2, -h/2 - 0.5],
@@ -191,7 +185,6 @@ function buildTable() {
         tableGroup.add(leg);
     });
 
-    // 테두리 표면상 다이아몬드 포인트 마크
     const pointMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const pointGeo = new THREE.SphereGeometry(0.12, 12, 12);
     const surfaceY = heightLevel - 0.1 + 0.01;
@@ -210,14 +203,12 @@ function buildTable() {
     scene.add(tableGroup);
 }
 
-// 2. 큐대 디테일 (가죽 팁, 선골, 상대, 하대 패턴)
 function createCueStick() {
     cuePivot = new THREE.Group();
     scene.add(cuePivot);
 
     cueGroup = new THREE.Group();
 
-    // A. 가죽 팁 (블루 타격면) - 수구를 향함 ($Z=0$ 지점)
     const tipGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.1, 16);
     tipGeo.rotateX(Math.PI / 2);
     tipGeo.translate(0, 0, 0.05);
@@ -225,35 +216,30 @@ function createCueStick() {
     const tipMesh = new THREE.Mesh(tipGeo, tipMat);
     cueGroup.add(tipMesh);
 
-    // B. 선골 (Ferrule)
     const ferruleGeo = new THREE.CylinderGeometry(0.052, 0.055, 0.25, 16);
     ferruleGeo.rotateX(Math.PI / 2);
     ferruleGeo.translate(0, 0, 0.225);
     const ferruleMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.2 });
     cueGroup.add(new THREE.Mesh(ferruleGeo, ferruleMat));
 
-    // C. 상대 (Shaft) - 단풍나무 밝은 목재 ($Z=0.35 \sim 7.5$)
     const shaftGeo = new THREE.CylinderGeometry(0.055, 0.1, 7.15, 16);
     shaftGeo.rotateX(Math.PI / 2);
     shaftGeo.translate(0, 0, 3.925);
     const shaftMat = new THREE.MeshStandardMaterial({ color: 0xf3e5ab, roughness: 0.4 });
     cueGroup.add(new THREE.Mesh(shaftGeo, shaftMat));
 
-    // D. 조인트 링 (Joint Ring)
     const ringGeo = new THREE.CylinderGeometry(0.102, 0.102, 0.15, 16);
     ringGeo.rotateX(Math.PI / 2);
     ringGeo.translate(0, 0, 7.575);
     const ringMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2 });
     cueGroup.add(new THREE.Mesh(ringGeo, ringMat));
 
-    // E. 하대 (Butt) - 고급 에보니 원목 ($Z=7.65 \sim 15.0$)
     const buttGeo = new THREE.CylinderGeometry(0.102, 0.15, 7.35, 16);
     buttGeo.rotateX(Math.PI / 2);
     buttGeo.translate(0, 0, 11.325);
     const buttMat = new THREE.MeshStandardMaterial({ color: 0x2b1810, roughness: 0.3 });
     const buttMesh = new THREE.Mesh(buttGeo, buttMat);
 
-    // 하대 패턴 링 (데칼/인레이 장식)
     const patternMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.6, roughness: 0.3 });
     [9.5, 12.0, 14.2].forEach(zPos => {
         const pRingGeo = new THREE.CylinderGeometry(0.12, 0.13, 0.2, 16);
@@ -299,7 +285,7 @@ function resetBalls() {
     updateAimLine();
 }
 
-// 3. 관통 방지 및 각도 보정
+// 큐대 팁에서 시작하여 수구를 통과해 길게 뻗어나가는 겨냥선 갱신
 function updateAimLine() {
     if (!cuePivot || !cueBall || !aimLine) return;
 
@@ -316,19 +302,21 @@ function updateAimLine() {
     const angleDeg = parseFloat(document.getElementById('aimAngle').value);
     const rad = (angleDeg * Math.PI) / 180;
 
-    // 수구 중심 위치로 피벗 설정
     cuePivot.position.copy(cueBall.position);
     cuePivot.rotation.y = -rad + Math.PI / 2;
 
-    // 큐대를 수구 뒤쪽 + 살짝 위로 들어 올려 테이블 통과 방지 (약 4.5도 들림)
     cueGroup.position.set(0, 0.08, 0.4);
     cueGroup.rotation.x = -0.08; 
 
-    // 겨냥선 높이를 공 표면으로 고정하여 바닥 침투 방지
+    // 조준 방향 벡터
     const aimDir = new THREE.Vector3(Math.cos(rad), 0, Math.sin(rad));
-    const p1 = cueBall.position.clone();
+
+    // 시작점 (p1): 큐대 팁 위치 (수구 뒤쪽 0.45 지점)
+    const p1 = cueBall.position.clone().sub(aimDir.clone().multiplyScalar(0.45));
     p1.y = tableSpec.ballR;
-    const p2 = p1.clone().add(aimDir.clone().multiplyScalar(40));
+
+    // 끝점 (p2): 수구를 지나 전방으로 멀리 연장
+    const p2 = cueBall.position.clone().add(aimDir.clone().multiplyScalar(40));
     p2.y = tableSpec.ballR;
 
     aimLine.geometry.setFromPoints([p1, p2]);

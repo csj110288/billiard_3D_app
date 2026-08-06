@@ -40,7 +40,7 @@
         <div id="hud-overlay">
             <h3 id="sysTitle">파이브 앤 하프 시스템</h3>
             <p id="sysFormula">공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span></p>
-            <p class="guide-text">💡 당구대를 클릭하면 그 방향으로 큐대가 즉시 조준됩니다.</p>
+            <p class="guide-text">💡 당구대를 클릭하면 그 방향으로 큐대가 조준됩니다.</p>
         </div>
     </div>
 
@@ -97,7 +97,7 @@
 
 <script>
 let scene, camera, renderer, controls;
-let tableGroup, cueBall, objectBall1, objectBall2, cuePivot, cueMesh, aimLine, theoryLine;
+let tableGroup, cueBall, objectBall1, objectBall2, cuePivot, cueGroup, aimLine, theoryLine;
 let ballTrails = [];
 let tableSpec = { width: 28.44, height: 14.22, ballR: 0.3075, friction: 0.991, cushionElasticity: 0.82 };
 let isSimulating = false;
@@ -122,10 +122,10 @@ function init3D() {
     if (typeof THREE.OrbitControls !== 'undefined') {
         controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
-        controls.maxPolarAngle = Math.PI / 2 - 0.02; // 바닥 아래로 카메라 이동 제한
+        controls.maxPolarAngle = Math.PI / 2 - 0.02;
     }
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     scene.add(ambientLight);
 
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
@@ -133,9 +133,9 @@ function init3D() {
     scene.add(dirLight);
 
     buildTable();
-    createCueStick();   // 큐대 피벗 생성
-    createAimLines();   // 조준선 생성
-    createBalls();      // 공 생성 및 세팅
+    createCueStick();   
+    createAimLines();   
+    createBalls();      
 
     viewport.addEventListener('pointerdown', onCanvasClick);
     window.addEventListener('resize', onWindowResize);
@@ -143,53 +143,47 @@ function init3D() {
     animate();
 }
 
-// 입체적인 당구대 및 쿠션/포인트/다리 구조 생성
+// 1. 단차 없는 당구대 프레임 및 테두리 다이아몬드 포인트
 function buildTable() {
     if(tableGroup) scene.remove(tableGroup);
     tableGroup = new THREE.Group();
 
     const w = tableSpec.width, h = tableSpec.height;
     const railThick = 1.8;
-    const railHeight = 0.6;
+    const heightLevel = 0.5; // 쿠션과 프레임 통일 높이
 
-    // 1. 바닥 라사지 (천)
+    // 라사지 바닥
     const feltMat = new THREE.MeshStandardMaterial({ color: 0x1b7d42, roughness: 0.4 });
-    const feltBed = new THREE.Mesh(new THREE.BoxGeometry(w, 0.4, h), feltMat);
-    feltBed.position.y = -0.2;
+    const feltBed = new THREE.Mesh(new THREE.BoxGeometry(w, 0.2, h), feltMat);
+    feltBed.position.y = -0.1;
     tableGroup.add(feltBed);
 
-    // 2. 쿠션 (Cushions - 4면 고무 쿠션)
+    // 쿠션 (내각 고무 쿠션) - 단차 없이 높이 맞춤
     const cushionMat = new THREE.MeshStandardMaterial({ color: 0x145a32, roughness: 0.3 });
-    
-    // 남/북 장쿠션
-    const cNorth = new THREE.Mesh(new THREE.BoxGeometry(w + railThick*2, railHeight, railThick), cushionMat);
-    cNorth.position.set(0, railHeight/2 - 0.2, -h/2 - railThick/2);
-    tableGroup.add(cNorth);
-
-    const cSouth = new THREE.Mesh(new THREE.BoxGeometry(w + railThick*2, railHeight, railThick), cushionMat);
-    cSouth.position.set(0, railHeight/2 - 0.2, h/2 + railThick/2);
-    tableGroup.add(cSouth);
-
-    // 동/서 단쿠션
-    const cEast = new THREE.Mesh(new THREE.BoxGeometry(railThick, railHeight, h), cushionMat);
-    cEast.position.set(w/2 + railThick/2, railHeight/2 - 0.2, 0);
-    tableGroup.add(cEast);
-
-    const cWest = new THREE.Mesh(new THREE.BoxGeometry(railThick, railHeight, h), cushionMat);
-    cWest.position.set(-w/2 - railThick/2, railHeight/2 - 0.2, 0);
-    tableGroup.add(cWest);
-
-    // 3. 원목 외곽 프레임
     const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a2a18, roughness: 0.2 });
-    const outerFrame = new THREE.Mesh(new THREE.BoxGeometry(w + railThick*2 + 1.2, 0.8, h + railThick*2 + 1.2), woodMat);
-    outerFrame.position.y = -0.3;
-    tableGroup.add(outerFrame);
 
-    // 4. 당구대 다리 (Legs - 4개)
+    // 테두리 프레임 (쿠션과 동일 높이 $Y=0.25$)
+    const frameNorth = new THREE.Mesh(new THREE.BoxGeometry(w + railThick*2, heightLevel, railThick), woodMat);
+    frameNorth.position.set(0, heightLevel/2 - 0.1, -h/2 - railThick/2);
+    tableGroup.add(frameNorth);
+
+    const frameSouth = new THREE.Mesh(new THREE.BoxGeometry(w + railThick*2, heightLevel, railThick), woodMat);
+    frameSouth.position.set(0, heightLevel/2 - 0.1, h/2 + railThick/2);
+    tableGroup.add(frameSouth);
+
+    const frameEast = new THREE.Mesh(new THREE.BoxGeometry(railThick, heightLevel, h), woodMat);
+    frameEast.position.set(w/2 + railThick/2, heightLevel/2 - 0.1, 0);
+    tableGroup.add(frameEast);
+
+    const frameWest = new THREE.Mesh(new THREE.BoxGeometry(railThick, heightLevel, h), woodMat);
+    frameWest.position.set(-w/2 - railThick/2, heightLevel/2 - 0.1, 0);
+    tableGroup.add(frameWest);
+
+    // 당구대 다리
     const legGeo = new THREE.CylinderGeometry(1.2, 0.8, 10, 16);
     const legPositions = [
-        [-w/2 - 0.5, -5.3, -h/2 - 0.5], [w/2 + 0.5, -5.3, -h/2 - 0.5],
-        [-w/2 - 0.5, -5.3, h/2 + 0.5], [w/2 + 0.5, -5.3, h/2 + 0.5]
+        [-w/2 - 0.5, -5.2, -h/2 - 0.5], [w/2 + 0.5, -5.2, -h/2 - 0.5],
+        [-w/2 - 0.5, -5.2, h/2 + 0.5], [w/2 + 0.5, -5.2, h/2 + 0.5]
     ];
     legPositions.forEach(pos => {
         const leg = new THREE.Mesh(legGeo, woodMat);
@@ -197,45 +191,79 @@ function buildTable() {
         tableGroup.add(leg);
     });
 
-    // 5. 다이아몬드 포인트 마크 (White Diamonds)
+    // 테두리 표면상 다이아몬드 포인트 마크
     const pointMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const pointGeo = new THREE.SphereGeometry(0.12, 8, 8);
+    const pointGeo = new THREE.SphereGeometry(0.12, 12, 12);
+    const surfaceY = heightLevel - 0.1 + 0.01;
+
     for(let i = 1; i < 8; i++) {
         let x = -w/2 + (w/8) * i;
-        let p1 = new THREE.Mesh(pointGeo, pointMat); p1.position.set(x, 0.22, -h/2 - railThick/2); tableGroup.add(p1);
-        let p2 = new THREE.Mesh(pointGeo, pointMat); p2.position.set(x, 0.22, h/2 + railThick/2); tableGroup.add(p2);
+        let p1 = new THREE.Mesh(pointGeo, pointMat); p1.position.set(x, surfaceY, -h/2 - railThick/2); tableGroup.add(p1);
+        let p2 = new THREE.Mesh(pointGeo, pointMat); p2.position.set(x, surfaceY, h/2 + railThick/2); tableGroup.add(p2);
     }
     for(let j = 1; j < 4; j++) {
         let z = -h/2 + (h/4) * j;
-        let p1 = new THREE.Mesh(pointGeo, pointMat); p1.position.set(w/2 + railThick/2, 0.22, z); tableGroup.add(p1);
-        let p2 = new THREE.Mesh(pointGeo, pointMat); p2.position.set(-w/2 - railThick/2, 0.22, z); tableGroup.add(p2);
+        let p1 = new THREE.Mesh(pointGeo, pointMat); p1.position.set(w/2 + railThick/2, surfaceY, z); tableGroup.add(p1);
+        let p2 = new THREE.Mesh(pointGeo, pointMat); p2.position.set(-w/2 - railThick/2, surfaceY, z); tableGroup.add(p2);
     }
 
     scene.add(tableGroup);
 }
 
-// 큐대 피벗(Pivot) 구조 생성 - 수구를 중심으로 정밀하게 회전
+// 2. 큐대 디테일 (가죽 팁, 선골, 상대, 하대 패턴)
 function createCueStick() {
     cuePivot = new THREE.Group();
     scene.add(cuePivot);
 
-    // 큐대 자루 (Z축 방향으로 정렬)
-    const cueLength = 16;
-    const cueGeo = new THREE.CylinderGeometry(0.06, 0.18, cueLength, 16);
-    cueGeo.rotateX(Math.PI / 2); // Z축 정렬
-    cueGeo.translate(0, 0, cueLength / 2); // 끝점이 원점(0,0,0)에 오도록 피벗 설정
+    cueGroup = new THREE.Group();
 
-    const cueMat = new THREE.MeshStandardMaterial({ color: 0xdfb888, roughness: 0.3 });
-    cueMesh = new THREE.Mesh(cueGeo, cueMat);
-
-    // 팁 (파란 가죽 팁)
-    const tipGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.3, 16);
+    // A. 가죽 팁 (블루 타격면) - 수구를 향함 ($Z=0$ 지점)
+    const tipGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.1, 16);
     tipGeo.rotateX(Math.PI / 2);
-    tipGeo.translate(0, 0, -0.15);
-    const tipMesh = new THREE.Mesh(tipGeo, new THREE.MeshStandardMaterial({ color: 0x2980b9 }));
-    cueMesh.add(tipMesh);
+    tipGeo.translate(0, 0, 0.05);
+    const tipMat = new THREE.MeshStandardMaterial({ color: 0x1f3a52, roughness: 0.9 });
+    const tipMesh = new THREE.Mesh(tipGeo, tipMat);
+    cueGroup.add(tipMesh);
 
-    cuePivot.add(cueMesh);
+    // B. 선골 (Ferrule)
+    const ferruleGeo = new THREE.CylinderGeometry(0.052, 0.055, 0.25, 16);
+    ferruleGeo.rotateX(Math.PI / 2);
+    ferruleGeo.translate(0, 0, 0.225);
+    const ferruleMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.2 });
+    cueGroup.add(new THREE.Mesh(ferruleGeo, ferruleMat));
+
+    // C. 상대 (Shaft) - 단풍나무 밝은 목재 ($Z=0.35 \sim 7.5$)
+    const shaftGeo = new THREE.CylinderGeometry(0.055, 0.1, 7.15, 16);
+    shaftGeo.rotateX(Math.PI / 2);
+    shaftGeo.translate(0, 0, 3.925);
+    const shaftMat = new THREE.MeshStandardMaterial({ color: 0xf3e5ab, roughness: 0.4 });
+    cueGroup.add(new THREE.Mesh(shaftGeo, shaftMat));
+
+    // D. 조인트 링 (Joint Ring)
+    const ringGeo = new THREE.CylinderGeometry(0.102, 0.102, 0.15, 16);
+    ringGeo.rotateX(Math.PI / 2);
+    ringGeo.translate(0, 0, 7.575);
+    const ringMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2 });
+    cueGroup.add(new THREE.Mesh(ringGeo, ringMat));
+
+    // E. 하대 (Butt) - 고급 에보니 원목 ($Z=7.65 \sim 15.0$)
+    const buttGeo = new THREE.CylinderGeometry(0.102, 0.15, 7.35, 16);
+    buttGeo.rotateX(Math.PI / 2);
+    buttGeo.translate(0, 0, 11.325);
+    const buttMat = new THREE.MeshStandardMaterial({ color: 0x2b1810, roughness: 0.3 });
+    const buttMesh = new THREE.Mesh(buttGeo, buttMat);
+
+    // 하대 패턴 링 (데칼/인레이 장식)
+    const patternMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.6, roughness: 0.3 });
+    [9.5, 12.0, 14.2].forEach(zPos => {
+        const pRingGeo = new THREE.CylinderGeometry(0.12, 0.13, 0.2, 16);
+        pRingGeo.rotateX(Math.PI / 2);
+        pRingGeo.translate(0, 0, zPos);
+        cueGroup.add(new THREE.Mesh(pRingGeo, patternMat));
+    });
+
+    cueGroup.add(buttMesh);
+    cuePivot.add(cueGroup);
 }
 
 function createBalls() {
@@ -271,7 +299,7 @@ function resetBalls() {
     updateAimLine();
 }
 
-// 큐대 위치 및 조준선 실시간 갱신
+// 3. 관통 방지 및 각도 보정
 function updateAimLine() {
     if (!cuePivot || !cueBall || !aimLine) return;
 
@@ -288,24 +316,25 @@ function updateAimLine() {
     const angleDeg = parseFloat(document.getElementById('aimAngle').value);
     const rad = (angleDeg * Math.PI) / 180;
 
-    // 1. 큐대 피벗을 수구 위치로 고정하고 각도에 맞춰 회전
+    // 수구 중심 위치로 피벗 설정
     cuePivot.position.copy(cueBall.position);
-    cuePivot.rotation.y = -rad - Math.PI / 2;
+    cuePivot.rotation.y = -rad + Math.PI / 2;
 
-    // 2. 큐대를 수구 뒤쪽으로 약간 띄우고 약간 조준 숙임 각도 적용
-    cueMesh.position.set(0, 0.2, tableSpec.ballR + 0.4);
-    cueMesh.rotation.x = 0.06;
+    // 큐대를 수구 뒤쪽 + 살짝 위로 들어 올려 테이블 통과 방지 (약 4.5도 들림)
+    cueGroup.position.set(0, 0.08, 0.4);
+    cueGroup.rotation.x = -0.08; 
 
-    // 3. 수구로부터 뻗어나가는 조준선 정렬
+    // 겨냥선 높이를 공 표면으로 고정하여 바닥 침투 방지
     const aimDir = new THREE.Vector3(Math.cos(rad), 0, Math.sin(rad));
     const p1 = cueBall.position.clone();
+    p1.y = tableSpec.ballR;
     const p2 = p1.clone().add(aimDir.clone().multiplyScalar(40));
+    p2.y = tableSpec.ballR;
 
     aimLine.geometry.setFromPoints([p1, p2]);
     if (aimLine.computeLineDistances) aimLine.computeLineDistances();
 }
 
-// 화면 직접 클릭하여 클릭한 위치로 큐대 자동 조준
 function onCanvasClick(event) {
     if (isSimulating || event.button !== 0) return;
     

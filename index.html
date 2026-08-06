@@ -19,9 +19,12 @@
         select, input[type="range"] { width: 100%; padding: 6px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; }
         .val-disp { font-size: 11px; color: #3498db; text-align: right; }
         .thick-disp { font-size: 12px; color: #f1c40f; font-weight: bold; text-align: right; }
-        .btn-group { display: flex; gap: 8px; margin-top: 5px; }
+        .btn-group { display: flex; gap: 6px; margin-top: 4px; }
         button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         button:disabled { opacity: 0.4; cursor: not-allowed; }
+        
+        .btn-fine { padding: 6px; font-size: 11px; background: #333; color: #2ecc71; border: 1px solid #444; }
+        .btn-fine:hover { background: #444; color: #2ecc71; }
         .btn-shoot { background: #27ae60; color: white; }
         .btn-replay { background: #8e44ad; color: white; }
         .btn-replay:hover:not(:disabled) { background: #9b59b6; }
@@ -50,8 +53,8 @@
             <p id="sysFormula">공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span></p>
             <p class="guide-text">
                 👉 <b>드래그 (손가락/마우스 이동)</b>: 당구대 시점 회전<br>
-                🎯 <b>짧은 터치/클릭</b>: 목적구 또는 원하는 지점 조준<br>
-                🔄 <b>동일 배치 반복</b>: 이전 난구를 동일 위치에서 반복 연습
+                🎯 <b>짧은 터치/클릭</b>: 목적구 조준<br>
+                🔍 <b>미세 버튼</b>: 0.1° / 0.5° 단위 정밀 겨냥
             </p>
         </div>
     </div>
@@ -101,8 +104,14 @@
         </div>
 
         <div class="group">
-            <label>조준 각도: <span id="angleVal" class="val-disp">35°</span></label>
-            <input type="range" id="aimAngle" min="0" max="360" value="35" oninput="document.getElementById('angleVal').innerText=this.value+'°'; updateAimLine();">
+            <label>조준 각도: <span id="angleVal" class="val-disp">35.0°</span></label>
+            <input type="range" id="aimAngle" min="0" max="360" value="35.0" step="0.1" oninput="updateAngleLabel(this.value); updateAimLine();">
+            <div class="btn-group">
+                <button class="btn-fine" onclick="adjustAngle(-0.5)">◀ -0.5°</button>
+                <button class="btn-fine" onclick="adjustAngle(-0.1)">◀ -0.1°</button>
+                <button class="btn-fine" onclick="adjustAngle(0.1)">+0.1° ▶</button>
+                <button class="btn-fine" onclick="adjustAngle(0.5)">+0.5° ▶</button>
+            </div>
         </div>
 
         <div class="group" style="background: #252525; padding: 8px; border-radius: 4px; border: 1px solid #333;">
@@ -131,9 +140,7 @@ let cueBall, objectBall1, objectBall2, objectBall3;
 let balls = [];
 let ballTrails = [];
 
-// 직전 배치 상태 저장을 위한 메모리 변수
 let savedBallPositions = [];
-
 let recordedFrames = [];
 let isReplaying = false;
 let replayFrameIdx = 0;
@@ -189,6 +196,7 @@ function init3D() {
     updatePowerLabel(document.getElementById('power').value);
     updateSpinXLabel(document.getElementById('spinX').value);
     updateSpinYLabel(document.getElementById('spinY').value);
+    updateAngleLabel(document.getElementById('aimAngle').value);
     updateSystemHUD();
     
     animate();
@@ -347,7 +355,7 @@ function createBalls() {
         scene.add(b);
     });
 
-    resetBalls(true); // 최초 생성 시 랜덤 배치 생성
+    resetBalls(true);
 }
 
 function createAimLines() {
@@ -357,7 +365,6 @@ function createAimLines() {
     scene.add(theoryLine);
 }
 
-// isRandom = true: 새로운 랜덤 배치 생성 / false: 기존 저장된 배치 반복
 function resetBalls(isRandom = false) {
     isSimulating = false;
     isReplaying = false;
@@ -372,7 +379,6 @@ function resetBalls(isRandom = false) {
     const minZ = -h/2 + margin, maxZ = h/2 - margin;
 
     if (isRandom || savedBallPositions.length !== balls.length) {
-        // 공 겹침 없는 정밀 랜덤 좌표 생성
         savedBallPositions = [];
         balls.forEach(() => {
             let posX, posZ, valid;
@@ -394,7 +400,6 @@ function resetBalls(isRandom = false) {
         });
     }
 
-    // 저장된 배치 적용
     balls.forEach((ball, idx) => {
         if (savedBallPositions[idx]) {
             ball.position.set(savedBallPositions[idx].x, r, savedBallPositions[idx].z);
@@ -430,6 +435,21 @@ function changeTableType() {
         : { width: 24.4, height: 12.2, ballR: ballR, friction: 0.984, cushionElasticity: 0.73 };
     buildTable(); 
     createBalls();
+}
+
+// 각도 표시 갱신 함수 (소수점 1자리)
+function updateAngleLabel(val) {
+    document.getElementById('angleVal').innerText = parseFloat(val).toFixed(1) + '°';
+}
+
+// 미세 조준 각도 버튼 함수 (+-0.1°, +-0.5°)
+function adjustAngle(delta) {
+    let slider = document.getElementById('aimAngle');
+    let current = parseFloat(slider.value) || 0;
+    let next = (current + delta + 360) % 360;
+    slider.value = next.toFixed(1);
+    updateAngleLabel(slider.value);
+    updateAimLine();
 }
 
 function updateAimLine() {
@@ -541,8 +561,9 @@ function onPointerUp(event) {
             let deg = Math.atan2(dz, dx) * (180 / Math.PI);
             if (deg < 0) deg += 360;
 
-            document.getElementById('aimAngle').value = Math.round(deg);
-            document.getElementById('angleVal').innerText = Math.round(deg) + '°';
+            let formattedDeg = parseFloat(deg.toFixed(1));
+            document.getElementById('aimAngle').value = formattedDeg;
+            updateAngleLabel(formattedDeg);
             updateAimLine();
         }
     }

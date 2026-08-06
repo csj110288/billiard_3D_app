@@ -52,9 +52,10 @@
             <h3 id="sysTitle">파이브 앤 하프 시스템</h3>
             <p id="sysFormula">공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span></p>
             <p class="guide-text">
-                👉 <b>드래그 (손가락/마우스 이동)</b>: 당구대 시점 회전<br>
-                🎯 <b>짧은 터치/클릭</b>: 목적구 조준<br>
-                🔍 <b>미세 버튼</b>: 0.1° / 0.5° 단위 정밀 겨냥
+                👉 <b>드래그 (빈 공간)</b>: 당구대 시점 회전<br>
+                🎱 <b>공 클릭 후 드래그</b>: 원하는 위치로 공 수동 배치<br>
+                🔮 <b>예상 경로</b>: 수구(흰색) 및 1적구(색상) 경로 예측<br>
+                🎯 <b>짧은 터치/클릭</b>: 목적구 조준
             </p>
         </div>
     </div>
@@ -90,7 +91,7 @@
 
         <div class="group">
             <label>스트로크 세기: <span id="powVal" class="val-disp">15 m/s (2레일 세기)</span></label>
-            <input type="range" id="power" min="5" max="30" value="15" oninput="updatePowerLabel(this.value)">
+            <input type="range" id="power" min="5" max="30" value="15" oninput="updatePowerLabel(this.value); updateAimLine();">
         </div>
 
         <div class="group">
@@ -135,7 +136,7 @@
 
 <script>
 let scene, camera, renderer, controls;
-let tableGroup, cuePivot, cueGroup, aimLine, theoryLine;
+let tableGroup, cuePivot, cueGroup, aimLine, objAimLine, theoryLine;
 let cueBall, objectBall1, objectBall2, objectBall3;
 let balls = [];
 let ballTrails = [];
@@ -145,6 +146,9 @@ let recordedFrames = [];
 let isReplaying = false;
 let replayFrameIdx = 0;
 const REPLAY_SPEED = 0.3;
+
+let isDraggingBall = false;
+let draggedBall = null;
 
 let currentGameMode = '3ball';
 let tableSpec = { width: 28.44, height: 14.22, ballR: 0.3075, friction: 0.991, cushionElasticity: 0.82 };
@@ -189,6 +193,7 @@ function init3D() {
     createBalls();      
 
     viewport.addEventListener('pointerdown', onPointerDown);
+    viewport.addEventListener('pointermove', onPointerMove);
     viewport.addEventListener('pointerup', onPointerUp);
 
     window.addEventListener('resize', onWindowResize);
@@ -359,8 +364,14 @@ function createBalls() {
 }
 
 function createAimLines() {
-    aimLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.5, gapSize: 0.2 }));
+    // 수구 예측 진행선 (흰색 점선)
+    aimLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.4, gapSize: 0.2 }));
     scene.add(aimLine);
+
+    // 1적구 예측 진행선 (적구 색상 점선)
+    objAimLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xff4444, dashSize: 0.4, gapSize: 0.2 }));
+    scene.add(objAimLine);
+
     theoryLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xf39c12 }));
     scene.add(theoryLine);
 }
@@ -453,9 +464,10 @@ function adjustAngle(delta) {
 function updateAimLine() {
     if (!cuePivot || !cueBall || !aimLine) return;
 
-    if (isSimulating || isReplaying) {
+    if (isSimulating || isReplaying || isDraggingBall) {
         cuePivot.visible = false;
         aimLine.visible = false;
+        if(objAimLine) objAimLine.visible = false;
         theoryLine.visible = false;
         return;
     }
@@ -472,18 +484,115 @@ function updateAimLine() {
     cueGroup.position.set(0, 0.08, 0.2);
     cueGroup.rotation.x = -0.08; 
 
-    const aimDir = new THREE.Vector3(Math.cos(rad), 0, Math.sin(rad));
+    calculateThickness(rad);
+    runVirtualTrajectory(rad);
+}
 
-    const p1 = cueBall.position.clone();
-    p1.y = tableSpec.ballR;
+// 실시간 가상 물리 엔진 시뮬레이션 기반 '수구 + 1적구 예상 진행 경로' 시각화
+function runVirtualTrajectory(rad) {
+    let vBalls = balls.map(b => ({
+        pos: b.position.clone(),
+        vel: new THREE.Vector3(0, 0, 0),
+        r: tableSpec.ballR,
+        ref: b
+    }));
 
-    const p2 = p1.clone().add(aimDir.clone().multiplyScalar(40));
-    p2.y = tableSpec.ballR;
+    const power = parseFloat(document.getElementById('power').value) * 0.08;
+    vBalls[0].vel.x = Math.cos(rad) * power;
+    vBalls[0].vel.z = Math.sin(rad) * power;
 
-    aimLine.geometry.setFromPoints([p1, p2]);
+    let cuePath = [vBalls[0].pos.clone()];
+    let targetObjIndex = -1;
+    let objPath = [];
+
+    const SUB_STEPS = 5;
+    const MAX_STEPS = 100;
+
+    for (let step = 0; step < MAX_STEPS; step++) {
+        for (let s = 0; s < SUB_STEPS; s++) {
+            vBalls.forEach(b => {
+                if (b.vel.lengthSq() > 0.0001) {
+                    let vX = b.vel.x / SUB_STEPS;
+                    let vZ = b.vel.z / SUB_STEPS;
+                    b.pos.x += vX;
+                    b.pos.z += vZ;
+
+                    b.vel.x *= Math.pow(tableSpec.friction, 1 / SUB_STEPS);
+                    b.vel.z *= Math.pow(tableSpec.friction, 1 / SUB_STEPS);
+
+                    const wB = tableSpec.width / 2 - b.r;
+                    const hB = tableSpec.height / 2 - b.r;
+
+                    if (Math.abs(b.pos.x) > wB) {
+                        b.pos.x = Math.sign(b.pos.x) * wB;
+                        b.vel.x = -b.vel.x * tableSpec.cushionElasticity;
+                    }
+                    if (Math.abs(b.pos.z) > hB) {
+                        b.pos.z = Math.sign(b.pos.z) * hB;
+                        b.vel.z = -b.vel.z * tableSpec.cushionElasticity;
+                    }
+                }
+            });
+
+            // 가상 공간 탄성 충돌 계산
+            for (let i = 0; i < vBalls.length; i++) {
+                for (let j = i + 1; j < vBalls.length; j++) {
+                    let b1 = vBalls[i];
+                    let b2 = vBalls[j];
+                    let dx = b2.pos.x - b1.pos.x;
+                    let dz = b2.pos.z - b1.pos.z;
+                    let dist = Math.hypot(dx, dz);
+                    let minDist = b1.r + b2.r;
+
+                    if (dist < minDist) {
+                        if (i === 0 && targetObjIndex === -1) {
+                            targetObjIndex = j;
+                            objPath.push(b2.pos.clone());
+                        }
+
+                        let angle = Math.atan2(dz, dx);
+                        let sin = Math.sin(angle), cos = Math.cos(angle);
+
+                        let vx1 = b1.vel.x * cos + b1.vel.z * sin;
+                        let vz1 = b1.vel.z * cos - b1.vel.x * sin;
+                        let vx2 = b2.vel.x * cos + b2.vel.z * sin;
+                        let vz2 = b2.vel.z * cos - b2.vel.x * sin;
+
+                        b1.vel.x = vx2 * cos - vz1 * sin;
+                        b1.vel.z = vz1 * cos + vx2 * sin;
+                        b2.vel.x = vx1 * cos - vz2 * sin;
+                        b2.vel.z = vz1 * cos + vx1 * sin;
+
+                        let overlap = minDist - dist;
+                        b1.pos.x -= Math.cos(angle) * overlap / 2;
+                        b1.pos.z -= Math.sin(angle) * overlap / 2;
+                        b2.pos.x += Math.cos(angle) * overlap / 2;
+                        b2.pos.z += Math.sin(angle) * overlap / 2;
+                    }
+                }
+            }
+        }
+
+        if (vBalls[0].vel.lengthSq() > 0.0001) {
+            cuePath.push(vBalls[0].pos.clone());
+        }
+        if (targetObjIndex !== -1 && vBalls[targetObjIndex].vel.lengthSq() > 0.0001) {
+            objPath.push(vBalls[targetObjIndex].pos.clone());
+        }
+    }
+
+    aimLine.geometry.setFromPoints(cuePath);
     if (aimLine.computeLineDistances) aimLine.computeLineDistances();
 
-    calculateThickness(rad);
+    if (targetObjIndex !== -1 && objPath.length > 0) {
+        let hitColor = vBalls[targetObjIndex].ref.material.color;
+        objAimLine.material.color = hitColor;
+        objAimLine.geometry.setFromPoints(objPath);
+        if (objAimLine.computeLineDistances) objAimLine.computeLineDistances();
+        objAimLine.visible = true;
+    } else {
+        if(objAimLine) objAimLine.visible = false;
+    }
 }
 
 function calculateThickness(rad) {
@@ -553,12 +662,78 @@ function calculateThickness(rad) {
     thicknessEl.style.color = color;
 }
 
+// 터치/클릭 마우스 이벤트 (공 수동 드래그 배치 처리 포함)
 function onPointerDown(event) {
+    if (isSimulating || isReplaying || event.button !== 0) return;
+
     pointerStartX = event.clientX;
     pointerStartY = event.clientY;
+
+    const viewport = document.getElementById('viewport');
+    const rect = viewport.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / viewport.clientWidth) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / viewport.clientHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const intersects = raycaster.intersectObjects(balls);
+
+    // 공을 클릭했을 때 드래그 모드 전환
+    if (intersects.length > 0) {
+        isDraggingBall = true;
+        draggedBall = intersects[0].object;
+        if (controls) controls.enabled = false;
+    }
+}
+
+function onPointerMove(event) {
+    if (!isDraggingBall || !draggedBall) return;
+
+    const viewport = document.getElementById('viewport');
+    const rect = viewport.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / viewport.clientWidth) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / viewport.clientHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -tableSpec.ballR);
+    const targetPoint = new THREE.Vector3();
+
+    if (raycaster.ray.intersectPlane(plane, targetPoint)) {
+        const w = tableSpec.width / 2 - tableSpec.ballR * 1.5;
+        const h = tableSpec.height / 2 - tableSpec.ballR * 1.5;
+
+        let newX = Math.max(-w, Math.min(w, targetPoint.x));
+        let newZ = Math.max(-h, Math.min(h, targetPoint.z));
+
+        let valid = true;
+        balls.forEach(other => {
+            if (other !== draggedBall) {
+                let dist = Math.hypot(newX - other.position.x, newZ - other.position.z);
+                if (dist < tableSpec.ballR * 2.2) {
+                    valid = false;
+                }
+            }
+        });
+
+        if (valid) {
+            draggedBall.position.x = newX;
+            draggedBall.position.z = newZ;
+            updateAimLine();
+        }
+    }
 }
 
 function onPointerUp(event) {
+    if (isDraggingBall) {
+        isDraggingBall = false;
+        draggedBall = null;
+        if (controls) controls.enabled = true;
+
+        // 수동 변경 배치를 기억에 반영
+        savedBallPositions = balls.map(b => ({ x: b.position.x, z: b.position.z }));
+        updateAimLine();
+        return;
+    }
+
     if (isSimulating || isReplaying || event.button !== 0) return;
 
     const moveDistance = Math.hypot(event.clientX - pointerStartX, event.clientY - pointerStartY);
@@ -605,11 +780,10 @@ function shoot() {
     updateAimLine();
 }
 
-// 서브스텝(Sub-stepping) 정밀 물리 엔진 적용 (터널링 관통 버그 완벽 방지)
 function updatePhysics() {
     if (!isSimulating) return;
     let moving = false;
-    const SUB_STEPS = 10; // 1프레임을 10회 정밀 분할 계산
+    const SUB_STEPS = 10;
 
     for (let step = 0; step < SUB_STEPS; step++) {
         balls.forEach(ball => {
@@ -621,7 +795,6 @@ function updatePhysics() {
                 ball.position.x += vX;
                 ball.position.z += vZ;
 
-                // 마찰 감쇄 (서브스텝 분할 반영)
                 ball.userData.vx *= Math.pow(tableSpec.friction, 1 / SUB_STEPS);
                 ball.userData.vz *= Math.pow(tableSpec.friction, 1 / SUB_STEPS);
 
@@ -639,7 +812,6 @@ function updatePhysics() {
             }
         });
 
-        // 서브스텝 단위 충돌 감지 및 튕김 계산
         for (let i = 0; i < balls.length; i++) {
             for (let j = i + 1; j < balls.length; j++) {
                 checkBallCollision(balls[i], balls[j]);
@@ -647,7 +819,6 @@ function updatePhysics() {
         }
     }
 
-    // 프레임당 1회 상태 녹화 및 궤적 잔상 생성
     const currentFrame = balls.map(b => ({ x: b.position.x, y: b.position.y, z: b.position.z }));
     recordedFrames.push(currentFrame);
 

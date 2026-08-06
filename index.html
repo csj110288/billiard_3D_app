@@ -57,7 +57,7 @@
             <p class="guide-text">
                 👉 <b>드래그 (빈 공간)</b>: 당구대 시점 회전<br>
                 🎱 <b>공 클릭 후 드래그</b>: 공 수동 위치 이동<br>
-                🔊 <b>사운드 & 득점 판정</b>: 충돌 사운드 및 3쿠션 자동 판정<br>
+                🔮 <b>정밀 예상 경로</b>: 실제 물리 100% 일치 궤적<br>
                 🎯 <b>짧은 터치/클릭</b>: 목적구 정밀 조준
             </p>
         </div>
@@ -167,8 +167,8 @@ let mouse = new THREE.Vector2();
 let pointerStartX = 0;
 let pointerStartY = 0;
 
-// 웹 오디오 사운드 합성 엔진
 let audioCtx = null;
+let realBallStates = [];
 
 function initAudio() {
     if (!audioCtx) {
@@ -185,7 +185,6 @@ function playCollisionSound(speed, isCushion = false) {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
         const now = audioCtx.currentTime;
-
         const intensity = Math.min(Math.max(speed * 1.5, 0.05), 1.0);
 
         if (isCushion) {
@@ -209,10 +208,9 @@ function playCollisionSound(speed, isCushion = false) {
     } catch(e) {}
 }
 
-// 3쿠션 득점 판정 변수
 let cushionHitCount = 0;
 let hitObjects = [];
-let scoreStatus = "NONE"; // "NONE", "SUCCESS", "FAIL"
+let scoreStatus = "NONE";
 
 function resetShotScoring() {
     cushionHitCount = 0;
@@ -244,6 +242,99 @@ function updateScoringHUD() {
         scoreEl.innerText = "대기 중";
         scoreEl.style.color = "#888";
     }
+}
+
+// 공통 정밀 물리 계산 엔진 (실제 시뮬레이션 및 예상 경로 예측 100% 동일 수식 적용)
+function stepPhysicsState(states, spec, subSteps, events = null) {
+    let isMoving = false;
+
+    for (let step = 0; step < subSteps; step++) {
+        states.forEach(b => {
+            if (Math.hypot(b.vx, b.vz) > 0.001) {
+                isMoving = true;
+                let vX = b.vx / subSteps;
+                let vZ = b.vz / subSteps;
+
+                b.x += vX;
+                b.z += vZ;
+
+                b.vx *= Math.pow(spec.friction, 1 / subSteps);
+                b.vz *= Math.pow(spec.friction, 1 / subSteps);
+
+                const wB = spec.width / 2 - spec.r;
+                const hB = spec.height / 2 - spec.r;
+
+                let hitCushion = false;
+                if (Math.abs(b.x) > wB) {
+                    b.x = Math.sign(b.x) * wB;
+                    b.vx = -b.vx * spec.cushionElasticity;
+                    hitCushion = true;
+                }
+                if (Math.abs(b.z) > hB) {
+                    b.z = Math.sign(b.z) * hB;
+                    b.vz = -b.vz * spec.cushionElasticity;
+                    hitCushion = true;
+                }
+
+                if (hitCushion && events) {
+                    let speed = Math.hypot(b.vx, b.vz);
+                    events.push({ type: 'cushion', ball: b, speed: speed });
+                }
+            }
+        });
+
+        for (let i = 0; i < states.length; i++) {
+            for (let j = i + 1; j < states.length; j++) {
+                let b1 = states[i];
+                let b2 = states[j];
+                let dx = b2.x - b1.x;
+                let dz = b2.z - b1.z;
+                let dist = Math.hypot(dx, dz);
+                let minDist = b1.r + b2.r;
+
+                if (dist < minDist) {
+                    if (events) {
+                        let relSpeed = Math.hypot(b1.vx - b2.vx, b1.vz - b2.vz);
+                        events.push({ type: 'ball', b1: b1, b2: b2, speed: relSpeed });
+                    }
+
+                    let angle = Math.atan2(dz, dx);
+                    let sin = Math.sin(angle), cos = Math.cos(angle);
+
+                    let vx1 = b1.vx * cos + b1.vz * sin;
+                    let vz1 = b1.vz * cos - b1.vx * sin;
+                    let vx2 = b2.vx * cos + b2.vz * sin;
+                    let vz2 = b2.vz * cos - b2.vx * sin;
+
+                    b1.vx = vx2 * cos - vz1 * sin;
+                    b1.vz = vz1 * cos + vx2 * sin;
+                    b2.vx = vx1 * cos - vz2 * sin;
+                    b2.vz = vz2 * cos + vx1 * sin;
+
+                    let overlap = minDist - dist;
+                    b1.x -= Math.cos(angle) * overlap / 2;
+                    b1.z -= Math.sin(angle) * overlap / 2;
+                    b2.x += Math.cos(angle) * overlap / 2;
+                    b2.z += Math.sin(angle) * overlap / 2;
+                }
+            }
+        }
+    }
+
+    return isMoving;
+}
+
+function syncRealStatesFromMeshes() {
+    realBallStates = balls.map((b, idx) => ({
+        id: idx,
+        x: b.position.x,
+        z: b.position.z,
+        vx: b.userData.vx || 0,
+        vz: b.userData.vz || 0,
+        r: tableSpec.ballR,
+        color: b.material.color.clone(),
+        ref: b
+    }));
 }
 
 function init3D() {
@@ -506,6 +597,7 @@ function resetBalls(isRandom = false) {
         ball.userData.vz = 0;
     });
 
+    syncRealStatesFromMeshes();
     updateAimLine();
 }
 
@@ -575,97 +667,56 @@ function updateAimLine() {
     runVirtualTrajectory(rad);
 }
 
+// 100% 동일 물리 엔진 기반 정밀 가상 궤적 예측
 function runVirtualTrajectory(rad) {
     if (!balls || balls.length === 0 || !cueBall) return;
 
-    let vBalls = balls.map(b => ({
-        pos: b.position.clone(),
-        vel: new THREE.Vector3(0, 0, 0),
+    let vStates = balls.map((b, idx) => ({
+        id: idx,
+        x: b.position.x,
+        z: b.position.z,
+        vx: 0,
+        vz: 0,
         r: tableSpec.ballR,
-        color: b.material.color.clone(),
-        ref: b
+        color: b.material.color.clone()
     }));
 
     const power = parseFloat(document.getElementById('power').value) * 0.08;
-    vBalls[0].vel.x = Math.cos(rad) * power;
-    vBalls[0].vel.z = Math.sin(rad) * power;
+    vStates[0].vx = Math.cos(rad) * power;
+    vStates[0].vz = Math.sin(rad) * power;
 
-    let cuePath = [vBalls[0].pos.clone()];
-    let targetObjIndex = -1;
+    let cuePath = [new THREE.Vector3(vStates[0].x, tableSpec.ballR, vStates[0].z)];
+    let targetObjIdx = -1;
     let objPath = [];
 
-    const SUB_STEPS = 4;
-    const MAX_STEPS = 60;
+    const SUB_STEPS = 10;
+    const SIM_FRAMES = 250;
 
-    for (let step = 0; step < MAX_STEPS; step++) {
-        for (let s = 0; s < SUB_STEPS; s++) {
-            vBalls.forEach(b => {
-                if (b.vel.lengthSq() > 0.0001) {
-                    let vX = b.vel.x / SUB_STEPS;
-                    let vZ = b.vel.z / SUB_STEPS;
-                    b.pos.x += vX;
-                    b.pos.z += vZ;
+    for (let frame = 0; frame < SIM_FRAMES; frame++) {
+        let virtEvents = [];
+        let isMoving = stepPhysicsState(vStates, tableSpec, SUB_STEPS, virtEvents);
 
-                    b.vel.x *= Math.pow(tableSpec.friction, 1 / SUB_STEPS);
-                    b.vel.z *= Math.pow(tableSpec.friction, 1 / SUB_STEPS);
+        if (targetObjIdx === -1) {
+            for (let ev of virtEvents) {
+                if (ev.type === 'ball') {
+                    if (ev.b1.id === 0) targetObjIdx = ev.b2.id;
+                    else if (ev.b2.id === 0) targetObjIdx = ev.b1.id;
 
-                    const wB = tableSpec.width / 2 - b.r;
-                    const hB = tableSpec.height / 2 - b.r;
-
-                    if (Math.abs(b.pos.x) > wB) {
-                        b.pos.x = Math.sign(b.pos.x) * wB;
-                        b.vel.x = -b.vel.x * tableSpec.cushionElasticity;
-                    }
-                    if (Math.abs(b.pos.z) > hB) {
-                        b.pos.z = Math.sign(b.pos.z) * hB;
-                        b.vel.z = -b.vel.z * tableSpec.cushionElasticity;
-                    }
-                }
-            });
-
-            for (let i = 0; i < vBalls.length; i++) {
-                for (let j = i + 1; j < vBalls.length; j++) {
-                    let b1 = vBalls[i];
-                    let b2 = vBalls[j];
-                    let dx = b2.pos.x - b1.pos.x;
-                    let dz = b2.pos.z - b1.pos.z;
-                    let dist = Math.hypot(dx, dz);
-                    let minDist = b1.r + b2.r;
-
-                    if (dist < minDist) {
-                        if (i === 0 && targetObjIndex === -1) {
-                            targetObjIndex = j;
-                            objPath.push(b2.pos.clone());
-                        }
-
-                        let angle = Math.atan2(dz, dx);
-                        let sin = Math.sin(angle), cos = Math.cos(angle);
-
-                        let vx1 = b1.vel.x * cos + b1.vel.z * sin;
-                        let vz1 = b1.vel.z * cos - b1.vel.x * sin;
-                        let vx2 = b2.vel.x * cos + b2.vel.z * sin;
-                        let vz2 = b2.vel.z * cos - b2.vel.x * sin;
-
-                        b1.vel.x = vx2 * cos - vz1 * sin;
-                        b1.vel.z = vz1 * cos + vx2 * sin;
-                        b2.vel.x = vx1 * cos - vz2 * sin;
-                        b2.vel.z = vz2 * cos + vx1 * sin;
-
-                        let overlap = minDist - dist;
-                        b1.pos.x -= Math.cos(angle) * overlap / 2;
-                        b1.pos.z -= Math.sin(angle) * overlap / 2;
-                        b2.pos.x += Math.cos(angle) * overlap / 2;
-                        b2.pos.z += Math.sin(angle) * overlap / 2;
+                    if (targetObjIdx !== -1) {
+                        objPath.push(new THREE.Vector3(vStates[targetObjIdx].x, tableSpec.ballR, vStates[targetObjIdx].z));
+                        break;
                     }
                 }
             }
         }
 
-        if (vBalls[0].vel.lengthSq() > 0.0001) {
-            cuePath.push(vBalls[0].pos.clone());
-        }
-        if (targetObjIndex !== -1 && vBalls[targetObjIndex].vel.lengthSq() > 0.0001) {
-            objPath.push(vBalls[targetObjIndex].pos.clone());
+        if (isMoving) {
+            cuePath.push(new THREE.Vector3(vStates[0].x, tableSpec.ballR, vStates[0].z));
+            if (targetObjIdx !== -1 && Math.hypot(vStates[targetObjIdx].vx, vStates[targetObjIdx].vz) > 0.001) {
+                objPath.push(new THREE.Vector3(vStates[targetObjIdx].x, tableSpec.ballR, vStates[targetObjIdx].z));
+            }
+        } else {
+            break;
         }
     }
 
@@ -676,8 +727,8 @@ function runVirtualTrajectory(rad) {
     }
 
     if (objAimLine) {
-        if (targetObjIndex !== -1 && objPath.length > 1) {
-            objAimLine.material.color = vBalls[targetObjIndex].color;
+        if (targetObjIdx !== -1 && objPath.length > 1) {
+            objAimLine.material.color = vStates[targetObjIdx].color;
             objAimLine.geometry.setFromPoints(objPath);
             if (objAimLine.computeLineDistances) objAimLine.computeLineDistances();
             objAimLine.visible = true;
@@ -811,6 +862,7 @@ function onPointerMove(event) {
             }
         });
 
+        syncRealStatesFromMeshes();
         updateAimLine();
     }
 }
@@ -822,6 +874,7 @@ function onPointerUp(event) {
         if (controls) controls.enabled = true;
 
         savedBallPositions = balls.map(b => ({ x: b.position.x, z: b.position.z }));
+        syncRealStatesFromMeshes();
         updateAimLine();
         return;
     }
@@ -866,12 +919,13 @@ function shoot() {
     const power = parseFloat(document.getElementById('power').value) * 0.08;
     const rad = (parseFloat(document.getElementById('aimAngle').value) * Math.PI) / 180;
 
-    cueBall.userData.vx = Math.cos(rad) * power;
-    cueBall.userData.vz = Math.sin(rad) * power;
-    cueBall.userData.spinX = parseFloat(document.getElementById('spinX').value);
-    cueBall.userData.spinY = parseFloat(document.getElementById('spinY').value);
+    balls[0].userData.vx = Math.cos(rad) * power;
+    balls[0].userData.vz = Math.sin(rad) * power;
+    balls[0].userData.spinX = parseFloat(document.getElementById('spinX').value);
+    balls[0].userData.spinY = parseFloat(document.getElementById('spinY').value);
 
-    // 타격음 (큐대 샷 사운드)
+    syncRealStatesFromMeshes();
+
     playCollisionSound(power * 1.2, false);
 
     isSimulating = true;
@@ -880,54 +934,44 @@ function shoot() {
 
 function updatePhysics() {
     if (!isSimulating) return;
-    let moving = false;
+
     const SUB_STEPS = 10;
+    let realEvents = [];
 
-    for (let step = 0; step < SUB_STEPS; step++) {
-        balls.forEach(ball => {
-            let vX = ball.userData.vx / SUB_STEPS;
-            let vZ = ball.userData.vz / SUB_STEPS;
+    let isMoving = stepPhysicsState(realBallStates, tableSpec, SUB_STEPS, realEvents);
 
-            if (Math.hypot(ball.userData.vx, ball.userData.vz) > 0.001) {
-                moving = true;
-                ball.position.x += vX;
-                ball.position.z += vZ;
+    realBallStates.forEach((st, idx) => {
+        let b = balls[idx];
+        if (b) {
+            b.position.x = st.x;
+            b.position.z = st.z;
+            b.userData.vx = st.vx;
+            b.userData.vz = st.vz;
+        }
+    });
 
-                ball.userData.vx *= Math.pow(tableSpec.friction, 1 / SUB_STEPS);
-                ball.userData.vz *= Math.pow(tableSpec.friction, 1 / SUB_STEPS);
-
-                const wB = tableSpec.width / 2 - tableSpec.ballR;
-                const hB = tableSpec.height / 2 - tableSpec.ballR;
-
-                let hitCushion = false;
-                if (Math.abs(ball.position.x) > wB) {
-                    ball.position.x = Math.sign(ball.position.x) * wB;
-                    ball.userData.vx = -ball.userData.vx * tableSpec.cushionElasticity;
-                    hitCushion = true;
-                }
-                if (Math.abs(ball.position.z) > hB) {
-                    ball.position.z = Math.sign(ball.position.z) * hB;
-                    ball.userData.vz = -ball.userData.vz * tableSpec.cushionElasticity;
-                    hitCushion = true;
-                }
-
-                if (hitCushion) {
-                    let curSpeed = Math.hypot(ball.userData.vx, ball.userData.vz);
-                    playCollisionSound(curSpeed, true);
-                    if (ball === cueBall) {
-                        cushionHitCount++;
-                        updateScoringHUD();
-                    }
-                }
+    realEvents.forEach(ev => {
+        if (ev.type === 'cushion') {
+            playCollisionSound(ev.speed, true);
+            if (ev.ball.id === 0) {
+                cushionHitCount++;
+                updateScoringHUD();
             }
-        });
-
-        for (let i = 0; i < balls.length; i++) {
-            for (let j = i + 1; j < balls.length; j++) {
-                checkBallCollision(balls[i], balls[j]);
+        } else if (ev.type === 'ball') {
+            playCollisionSound(ev.speed, false);
+            if (ev.b1.id === 0 || ev.b2.id === 0) {
+                let targetId = (ev.b1.id === 0) ? ev.b2.id : ev.b1.id;
+                let targetMesh = balls[targetId];
+                if (targetMesh && !hitObjects.includes(targetMesh)) {
+                    hitObjects.push(targetMesh);
+                    if (hitObjects.length === 2 && cushionHitCount >= 3) {
+                        scoreStatus = "SUCCESS";
+                    }
+                    updateScoringHUD();
+                }
             }
         }
-    }
+    });
 
     const currentFrame = balls.map(b => ({ x: b.position.x, y: b.position.y, z: b.position.z }));
     recordedFrames.push(currentFrame);
@@ -938,7 +982,7 @@ function updatePhysics() {
         }
     });
 
-    if (!moving) {
+    if (!isMoving) {
         isSimulating = false;
         if (scoreStatus !== "SUCCESS") {
             scoreStatus = "FAIL";
@@ -980,51 +1024,6 @@ function updateReplay() {
     }
 
     replayFrameIdx += REPLAY_SPEED;
-}
-
-function checkBallCollision(b1, b2) {
-    const dx = b2.position.x - b1.position.x;
-    const dz = b2.position.z - b1.position.z;
-    const dist = Math.hypot(dx, dz);
-    const minDist = tableSpec.ballR * 2;
-
-    if (dist < minDist) {
-        let relSpeed = Math.hypot(b1.userData.vx - b2.userData.vx, b1.userData.vz - b2.userData.vz);
-        playCollisionSound(relSpeed, false);
-
-        // 3쿠션 득점 로직 판정
-        if (b1 === cueBall || b2 === cueBall) {
-            let targetObj = (b1 === cueBall) ? b2 : b1;
-            if (!hitObjects.includes(targetObj)) {
-                hitObjects.push(targetObj);
-                if (hitObjects.length === 2) {
-                    if (cushionHitCount >= 3) {
-                        scoreStatus = "SUCCESS";
-                    }
-                }
-                updateScoringHUD();
-            }
-        }
-
-        const angle = Math.atan2(dz, dx);
-        const sin = Math.sin(angle), cos = Math.cos(angle);
-
-        let vx1 = b1.userData.vx * cos + b1.userData.vz * sin;
-        let vz1 = b1.userData.vz * cos - b1.userData.vx * sin;
-        let vx2 = b2.userData.vx * cos + b2.userData.vz * sin;
-        let vz2 = b2.userData.vz * cos - b2.userData.vx * sin;
-
-        b1.userData.vx = vx2 * cos - vz1 * sin;
-        b1.userData.vz = vz1 * cos + vx2 * sin;
-        b2.userData.vx = vx1 * cos - vz2 * sin;
-        b2.userData.vz = vz2 * cos + vx1 * sin;
-
-        const overlap = minDist - dist;
-        b1.position.x -= Math.cos(angle) * overlap / 2;
-        b1.position.z -= Math.sin(angle) * overlap / 2;
-        b2.position.x += Math.cos(angle) * overlap / 2;
-        b2.position.z += Math.sin(angle) * overlap / 2;
-    }
 }
 
 function createTrailPoint(pos, color) {

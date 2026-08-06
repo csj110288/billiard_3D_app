@@ -8,10 +8,10 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background-color: #111; color: #fff; font-family: sans-serif; overflow: hidden; width: 100vw; height: 100vh; }
         #app-container { display: flex; width: 100%; height: 100%; }
-        #viewport { flex: 1; position: relative; height: 100%; min-width: 300px; background-color: #050505; }
+        #viewport { flex: 1; position: relative; height: 100%; min-width: 300px; background-color: #050505; cursor: crosshair; }
         #canvas3d { width: 100%; height: 100%; display: block; }
         
-        #sidebar { width: 340px; background: #1e1e1e; padding: 20px; border-left: 1px solid #333; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+        #sidebar { width: 340px; background: #1e1e1e; padding: 20px; border-left: 1px solid #333; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; z-index: 20; }
         h2 { font-size: 18px; color: #2ecc71; border-bottom: 2px solid #2ecc71; padding-bottom: 5px; }
         .group { display: flex; flex-direction: column; gap: 4px; }
         label { font-size: 12px; color: #aaa; font-weight: bold; }
@@ -27,6 +27,7 @@
         #hud-overlay h3 { font-size: 14px; color: #f1c40f; margin-bottom: 4px; }
         #hud-overlay p { font-size: 12px; color: #ddd; }
         .formula { font-family: monospace; color: #2ecc71; font-weight: bold; }
+        .guide-text { font-size: 11px; color: #888; margin-top: 4px; }
     </style>
     <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -39,6 +40,7 @@
         <div id="hud-overlay">
             <h3 id="sysTitle">파이브 앤 하프 시스템</h3>
             <p id="sysFormula">공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span></p>
+            <p class="guide-text">💡 당구대를 클릭하면 그 방향으로 큐대가 즉시 조준됩니다.</p>
         </div>
     </div>
 
@@ -95,10 +97,12 @@
 
 <script>
 let scene, camera, renderer, controls;
-let tableMesh, cueBall, objectBall1, objectBall2, cueStick, aimLine, theoryLine;
+let tableGroup, cueBall, objectBall1, objectBall2, cuePivot, cueMesh, aimLine, theoryLine;
 let ballTrails = [];
 let tableSpec = { width: 28.44, height: 14.22, ballR: 0.3075, friction: 0.991, cushionElasticity: 0.82 };
 let isSimulating = false;
+let raycaster = new THREE.Raycaster();
+let mouse = new THREE.Vector2();
 
 function init3D() {
     const viewport = document.getElementById('viewport');
@@ -106,10 +110,10 @@ function init3D() {
     const height = viewport.clientHeight || window.innerHeight;
 
     scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x1a1a1a);
+    scene.background = new THREE.Color(0x111111);
 
-    camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
-    camera.position.set(0, 30, 25);
+    camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000);
+    camera.position.set(0, 25, 30);
 
     renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas3d'), antialias: true });
     renderer.setSize(width, height);
@@ -118,37 +122,120 @@ function init3D() {
     if (typeof THREE.OrbitControls !== 'undefined') {
         controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
+        controls.maxPolarAngle = Math.PI / 2 - 0.02; // 바닥 아래로 카메라 이동 제한
     }
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
 
-    const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
-    dirLight.position.set(0, 40, 20);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    dirLight.position.set(10, 40, 20);
     scene.add(dirLight);
 
     buildTable();
-    createCueStick();   // 큐대 선생성
-    createAimLines();   // 조준선 선생성
-    createBalls();      // 공 생성 및 위치 초기화
+    createCueStick();   // 큐대 피벗 생성
+    createAimLines();   // 조준선 생성
+    createBalls();      // 공 생성 및 세팅
 
+    viewport.addEventListener('pointerdown', onCanvasClick);
     window.addEventListener('resize', onWindowResize);
     updateSystemHUD();
     animate();
 }
 
+// 입체적인 당구대 및 쿠션/포인트/다리 구조 생성
 function buildTable() {
-    if(tableMesh) scene.remove(tableMesh);
+    if(tableGroup) scene.remove(tableGroup);
+    tableGroup = new THREE.Group();
+
     const w = tableSpec.width, h = tableSpec.height;
+    const railThick = 1.8;
+    const railHeight = 0.6;
 
+    // 1. 바닥 라사지 (천)
     const feltMat = new THREE.MeshStandardMaterial({ color: 0x1b7d42, roughness: 0.4 });
-    tableMesh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.5, h), feltMat);
-    tableMesh.position.y = -0.25;
-    scene.add(tableMesh);
+    const feltBed = new THREE.Mesh(new THREE.BoxGeometry(w, 0.4, h), feltMat);
+    feltBed.position.y = -0.2;
+    tableGroup.add(feltBed);
 
-    const frameMesh = new THREE.Mesh(new THREE.BoxGeometry(w + 3, 0.8, h + 3), new THREE.MeshStandardMaterial({ color: 0x5c3a21 }));
-    frameMesh.position.y = -0.4;
-    scene.add(frameMesh);
+    // 2. 쿠션 (Cushions - 4면 고무 쿠션)
+    const cushionMat = new THREE.MeshStandardMaterial({ color: 0x145a32, roughness: 0.3 });
+    
+    // 남/북 장쿠션
+    const cNorth = new THREE.Mesh(new THREE.BoxGeometry(w + railThick*2, railHeight, railThick), cushionMat);
+    cNorth.position.set(0, railHeight/2 - 0.2, -h/2 - railThick/2);
+    tableGroup.add(cNorth);
+
+    const cSouth = new THREE.Mesh(new THREE.BoxGeometry(w + railThick*2, railHeight, railThick), cushionMat);
+    cSouth.position.set(0, railHeight/2 - 0.2, h/2 + railThick/2);
+    tableGroup.add(cSouth);
+
+    // 동/서 단쿠션
+    const cEast = new THREE.Mesh(new THREE.BoxGeometry(railThick, railHeight, h), cushionMat);
+    cEast.position.set(w/2 + railThick/2, railHeight/2 - 0.2, 0);
+    tableGroup.add(cEast);
+
+    const cWest = new THREE.Mesh(new THREE.BoxGeometry(railThick, railHeight, h), cushionMat);
+    cWest.position.set(-w/2 - railThick/2, railHeight/2 - 0.2, 0);
+    tableGroup.add(cWest);
+
+    // 3. 원목 외곽 프레임
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a2a18, roughness: 0.2 });
+    const outerFrame = new THREE.Mesh(new THREE.BoxGeometry(w + railThick*2 + 1.2, 0.8, h + railThick*2 + 1.2), woodMat);
+    outerFrame.position.y = -0.3;
+    tableGroup.add(outerFrame);
+
+    // 4. 당구대 다리 (Legs - 4개)
+    const legGeo = new THREE.CylinderGeometry(1.2, 0.8, 10, 16);
+    const legPositions = [
+        [-w/2 - 0.5, -5.3, -h/2 - 0.5], [w/2 + 0.5, -5.3, -h/2 - 0.5],
+        [-w/2 - 0.5, -5.3, h/2 + 0.5], [w/2 + 0.5, -5.3, h/2 + 0.5]
+    ];
+    legPositions.forEach(pos => {
+        const leg = new THREE.Mesh(legGeo, woodMat);
+        leg.position.set(...pos);
+        tableGroup.add(leg);
+    });
+
+    // 5. 다이아몬드 포인트 마크 (White Diamonds)
+    const pointMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const pointGeo = new THREE.SphereGeometry(0.12, 8, 8);
+    for(let i = 1; i < 8; i++) {
+        let x = -w/2 + (w/8) * i;
+        let p1 = new THREE.Mesh(pointGeo, pointMat); p1.position.set(x, 0.22, -h/2 - railThick/2); tableGroup.add(p1);
+        let p2 = new THREE.Mesh(pointGeo, pointMat); p2.position.set(x, 0.22, h/2 + railThick/2); tableGroup.add(p2);
+    }
+    for(let j = 1; j < 4; j++) {
+        let z = -h/2 + (h/4) * j;
+        let p1 = new THREE.Mesh(pointGeo, pointMat); p1.position.set(w/2 + railThick/2, 0.22, z); tableGroup.add(p1);
+        let p2 = new THREE.Mesh(pointGeo, pointMat); p2.position.set(-w/2 - railThick/2, 0.22, z); tableGroup.add(p2);
+    }
+
+    scene.add(tableGroup);
+}
+
+// 큐대 피벗(Pivot) 구조 생성 - 수구를 중심으로 정밀하게 회전
+function createCueStick() {
+    cuePivot = new THREE.Group();
+    scene.add(cuePivot);
+
+    // 큐대 자루 (Z축 방향으로 정렬)
+    const cueLength = 16;
+    const cueGeo = new THREE.CylinderGeometry(0.06, 0.18, cueLength, 16);
+    cueGeo.rotateX(Math.PI / 2); // Z축 정렬
+    cueGeo.translate(0, 0, cueLength / 2); // 끝점이 원점(0,0,0)에 오도록 피벗 설정
+
+    const cueMat = new THREE.MeshStandardMaterial({ color: 0xdfb888, roughness: 0.3 });
+    cueMesh = new THREE.Mesh(cueGeo, cueMat);
+
+    // 팁 (파란 가죽 팁)
+    const tipGeo = new THREE.CylinderGeometry(0.06, 0.06, 0.3, 16);
+    tipGeo.rotateX(Math.PI / 2);
+    tipGeo.translate(0, 0, -0.15);
+    const tipMesh = new THREE.Mesh(tipGeo, new THREE.MeshStandardMaterial({ color: 0x2980b9 }));
+    cueMesh.add(tipMesh);
+
+    cuePivot.add(cueMesh);
 }
 
 function createBalls() {
@@ -164,12 +251,6 @@ function createBalls() {
         scene.add(b);
     });
     resetBalls();
-}
-
-function createCueStick() {
-    cueStick = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.2, 15, 16), new THREE.MeshStandardMaterial({ color: 0xd2b48c }));
-    cueStick.rotation.x = Math.PI / 2;
-    scene.add(cueStick);
 }
 
 function createAimLines() {
@@ -190,25 +271,63 @@ function resetBalls() {
     updateAimLine();
 }
 
+// 큐대 위치 및 조준선 실시간 갱신
 function updateAimLine() {
-    if (!cueStick || !cueBall || !aimLine) return; // 안전 검사 예외 구문
+    if (!cuePivot || !cueBall || !aimLine) return;
 
     if (isSimulating) {
-        if(cueStick) cueStick.visible = false;
-        if(aimLine) aimLine.visible = false;
-        if(theoryLine) theoryLine.visible = false;
+        cuePivot.visible = false;
+        aimLine.visible = false;
+        theoryLine.visible = false;
         return;
     }
-    if(cueStick) cueStick.visible = true;
-    if(aimLine) aimLine.visible = true;
+    cuePivot.visible = true;
+    aimLine.visible = true;
+    theoryLine.visible = true;
 
-    const rad = (parseFloat(document.getElementById('aimAngle').value) * Math.PI) / 180;
-    cueStick.position.set(cueBall.position.x - Math.cos(rad) * 9, tableSpec.ballR + 0.3, cueBall.position.z - Math.sin(rad) * 9);
-    cueStick.rotation.y = -rad + Math.PI/2;
+    const angleDeg = parseFloat(document.getElementById('aimAngle').value);
+    const rad = (angleDeg * Math.PI) / 180;
 
-    const points = [cueBall.position.clone(), new THREE.Vector3(cueBall.position.x + Math.cos(rad) * 40, tableSpec.ballR, cueBall.position.z + Math.sin(rad) * 40)];
-    aimLine.geometry.setFromPoints(points);
+    // 1. 큐대 피벗을 수구 위치로 고정하고 각도에 맞춰 회전
+    cuePivot.position.copy(cueBall.position);
+    cuePivot.rotation.y = -rad - Math.PI / 2;
+
+    // 2. 큐대를 수구 뒤쪽으로 약간 띄우고 약간 조준 숙임 각도 적용
+    cueMesh.position.set(0, 0.2, tableSpec.ballR + 0.4);
+    cueMesh.rotation.x = 0.06;
+
+    // 3. 수구로부터 뻗어나가는 조준선 정렬
+    const aimDir = new THREE.Vector3(Math.cos(rad), 0, Math.sin(rad));
+    const p1 = cueBall.position.clone();
+    const p2 = p1.clone().add(aimDir.clone().multiplyScalar(40));
+
+    aimLine.geometry.setFromPoints([p1, p2]);
     if (aimLine.computeLineDistances) aimLine.computeLineDistances();
+}
+
+// 화면 직접 클릭하여 클릭한 위치로 큐대 자동 조준
+function onCanvasClick(event) {
+    if (isSimulating || event.button !== 0) return;
+    
+    const viewport = document.getElementById('viewport');
+    const rect = viewport.getBoundingClientRect();
+    mouse.x = ((event.clientX - rect.left) / viewport.clientWidth) * 2 - 1;
+    mouse.y = -((event.clientY - rect.top) / viewport.clientHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const targetPoint = new THREE.Vector3();
+
+    if (raycaster.ray.intersectPlane(plane, targetPoint)) {
+        const dx = targetPoint.x - cueBall.position.x;
+        const dz = targetPoint.z - cueBall.position.z;
+        let deg = Math.atan2(dz, dx) * (180 / Math.PI);
+        if (deg < 0) deg += 360;
+
+        document.getElementById('aimAngle').value = Math.round(deg);
+        document.getElementById('angleVal').innerText = Math.round(deg) + '°';
+        updateAimLine();
+    }
 }
 
 function shoot() {
@@ -249,7 +368,42 @@ function updatePhysics() {
             }
         }
     });
+
+    for (let i = 0; i < balls.length; i++) {
+        for (let j = i + 1; j < balls.length; j++) {
+            checkBallCollision(balls[i], balls[j]);
+        }
+    }
+
     if (!moving) isSimulating = false;
+}
+
+function checkBallCollision(b1, b2) {
+    const dx = b2.position.x - b1.position.x;
+    const dz = b2.position.z - b1.position.z;
+    const dist = Math.hypot(dx, dz);
+    const minDist = tableSpec.ballR * 2;
+
+    if (dist < minDist) {
+        const angle = Math.atan2(dz, dx);
+        const sin = Math.sin(angle), cos = Math.cos(angle);
+
+        let vx1 = b1.userData.vx * cos + b1.userData.vz * sin;
+        let vz1 = b1.userData.vz * cos - b1.userData.vx * sin;
+        let vx2 = b2.userData.vx * cos + b2.userData.vz * sin;
+        let vz2 = b2.userData.vz * cos - b2.userData.vx * sin;
+
+        b1.userData.vx = vx2 * cos - vz1 * sin;
+        b1.userData.vz = vz1 * cos + vx2 * sin;
+        b2.userData.vx = vx1 * cos - vz2 * sin;
+        b2.userData.vz = vz2 * cos + vx1 * sin;
+
+        const overlap = minDist - dist;
+        b1.position.x -= Math.cos(angle) * overlap / 2;
+        b1.position.z -= Math.sin(angle) * overlap / 2;
+        b2.position.x += Math.cos(angle) * overlap / 2;
+        b2.position.z += Math.sin(angle) * overlap / 2;
+    }
 }
 
 function createTrailPoint(pos, color) {

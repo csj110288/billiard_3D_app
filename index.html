@@ -28,7 +28,6 @@
         #hud-overlay p { font-size: 12px; color: #ddd; }
         .formula { font-family: monospace; color: #2ecc71; font-weight: bold; }
     </style>
-    <!-- 호환성 검증된 Three.js 및 OrbitControls CDN -->
     <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
@@ -116,7 +115,6 @@ function init3D() {
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-    // OrbitControls 예외 안전 처리
     if (typeof THREE.OrbitControls !== 'undefined') {
         controls = new THREE.OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
@@ -130,9 +128,9 @@ function init3D() {
     scene.add(dirLight);
 
     buildTable();
-    createBalls();
-    createCueStick();
-    createAimLines();
+    createCueStick();   // 큐대 선생성
+    createAimLines();   // 조준선 선생성
+    createBalls();      // 공 생성 및 위치 초기화
 
     window.addEventListener('resize', onWindowResize);
     updateSystemHUD();
@@ -193,6 +191,8 @@ function resetBalls() {
 }
 
 function updateAimLine() {
+    if (!cueStick || !cueBall || !aimLine) return; // 안전 검사 예외 구문
+
     if (isSimulating) {
         if(cueStick) cueStick.visible = false;
         if(aimLine) aimLine.visible = false;

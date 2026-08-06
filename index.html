@@ -115,7 +115,7 @@
         </div>
 
         <div class="group" style="background: #252525; padding: 8px; border-radius: 4px; border: 1px solid #333;">
-            <label>🎯 1목적구 겨냥 두께:</label>
+            <label>🎯 겨냥 목적구 & 두께:</label>
             <span id="thicknessVal" class="thick-disp">계산 중...</span>
         </div>
 
@@ -437,12 +437,10 @@ function changeTableType() {
     createBalls();
 }
 
-// 각도 표시 갱신 함수 (소수점 1자리)
 function updateAngleLabel(val) {
     document.getElementById('angleVal').innerText = parseFloat(val).toFixed(1) + '°';
 }
 
-// 미세 조준 각도 버튼 함수 (+-0.1°, +-0.5°)
 function adjustAngle(delta) {
     let slider = document.getElementById('aimAngle');
     let current = parseFloat(slider.value) || 0;
@@ -488,35 +486,58 @@ function updateAimLine() {
     calculateThickness(rad);
 }
 
+// 조준선 상의 모든 목적구 실시간 정밀 겨냥 감지 로직
 function calculateThickness(rad) {
-    if (!objectBall1 || !cueBall) return;
+    if (!cueBall || !balls || balls.length === 0) return;
 
     const thicknessEl = document.getElementById('thicknessVal');
-    const dx = objectBall1.position.x - cueBall.position.x;
-    const dz = objectBall1.position.z - cueBall.position.z;
+    if (!thicknessEl) return;
 
     const dirX = Math.cos(rad);
     const dirZ = Math.sin(rad);
-
-    const t = dx * dirX + dz * dirZ;
-
-    if (t <= 0) {
-        thicknessEl.innerText = "맞지 않음 (뒤쪽)";
-        thicknessEl.style.color = "#888";
-        return;
-    }
-
-    const vDistSq = (dx * dx + dz * dz) - (t * t);
-    const vDist = Math.sqrt(Math.max(0, vDistSq));
     const maxDist = tableSpec.ballR * 2;
 
-    if (vDist >= maxDist) {
-        thicknessEl.innerText = "맞지 않음 (빗나감)";
+    let closestHit = null;
+    let minT = Infinity;
+
+    // 수구를 제외한 모든 공 충돌 탐색
+    balls.forEach(ball => {
+        if (ball === cueBall) return;
+
+        const dx = ball.position.x - cueBall.position.x;
+        const dz = ball.position.z - cueBall.position.z;
+        const t = dx * dirX + dz * dirZ; // 조준 방향 전방 거리
+
+        if (t > 0) {
+            const vDistSq = (dx * dx + dz * dz) - (t * t);
+            const vDist = Math.sqrt(Math.max(0, vDistSq));
+
+            if (vDist < maxDist && t < minT) {
+                minT = t;
+                closestHit = {
+                    ball: ball,
+                    vDist: vDist
+                };
+            }
+        }
+    });
+
+    if (!closestHit) {
+        thicknessEl.innerText = "조준선에 맞는 공 없음";
         thicknessEl.style.color = "#888";
         return;
     }
 
-    const overlap = 1 - (vDist / maxDist);
+    // 겨냥된 공 이름/색상 확인
+    let ballName = "목적구";
+    let ballColorHex = closestHit.ball.material.color.getHex();
+    if (ballColorHex === 0xcc1111) {
+        ballName = "🔴 빨간 공";
+    } else if (ballColorHex === 0xf1c40f) {
+        ballName = "🟡 노란 공";
+    }
+
+    const overlap = 1 - (closestHit.vDist / maxDist);
     let thickText = "";
     let color = "#2ecc71";
 
@@ -529,9 +550,9 @@ function calculateThickness(rad) {
     else if (overlap >= 0.1875) { thickText = "2/8 두께 (1/4 두께)"; color = "#3498db"; }
     else if (overlap >= 0.09375) { thickText = "1/8 두께"; color = "#9b59b6"; }
     else if (overlap >= 0.02) { thickText = "0.5/8 두께 (얇게)"; color = "#e84393"; }
-    else { thickText = "맞지 않음 (스침)"; color = "#888"; }
+    else { thickText = "스침 (얇게)"; color = "#888"; }
 
-    thicknessEl.innerText = thickText;
+    thicknessEl.innerText = `${ballName} : ${thickText}`;
     thicknessEl.style.color = color;
 }
 

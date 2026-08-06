@@ -19,8 +19,11 @@
         select, input[type="range"] { width: 100%; padding: 6px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; }
         .val-disp { font-size: 11px; color: #3498db; text-align: right; }
         .btn-group { display: flex; gap: 8px; margin-top: 5px; }
-        button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
+        button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
         .btn-shoot { background: #27ae60; color: white; }
+        .btn-replay { background: #8e44ad; color: white; }
+        .btn-replay:hover:not(:disabled) { background: #9b59b6; }
         .btn-reset { background: #e74c3c; color: white; }
         .btn-clear { background: #f39c12; color: white; }
         
@@ -43,7 +46,8 @@
             <p id="sysFormula">공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span></p>
             <p class="guide-text">
                 👉 <b>드래그 (손가락/마우스 이동)</b>: 당구대 시점 회전<br>
-                🎯 <b>짧은 터치/클릭</b>: 목적구 또는 원하는 지점 조준
+                🎯 <b>짧은 터치/클릭</b>: 목적구 또는 원하는 지점 조준<br>
+                🎬 <b>샷 완료 후</b>: 슬로우 다시보기로 궤적 확인 가능
             </p>
         </div>
     </div>
@@ -99,9 +103,10 @@
 
         <div class="btn-group">
             <button class="btn-shoot" onclick="shoot()">샷 실행</button>
-            <button class="btn-reset" onclick="resetBalls()">위치 리셋</button>
+            <button class="btn-replay" id="btnReplay" onclick="playSlowReplay()" disabled>🎬 슬로우 다시보기 (0.3x)</button>
         </div>
         <div class="btn-group">
+            <button class="btn-reset" onclick="resetBalls()">위치 리셋</button>
             <button class="btn-clear" onclick="clearTrails()">궤적 잔상 지우기</button>
         </div>
     </div>
@@ -110,11 +115,16 @@
 <script>
 let scene, camera, renderer, controls;
 let tableGroup, cuePivot, cueGroup, aimLine, theoryLine;
-let cueBall, objectBall1, objectBall2, objectBall3; // 공 객체들
-let balls = []; // 활성화된 전체 공 배열
+let cueBall, objectBall1, objectBall2, objectBall3;
+let balls = [];
 let ballTrails = [];
 
-// 종목 및 테이블 스펙 (3구: 반지름 0.3075, 4구: 반지름 0.3275)
+// 슬로우 모션 프레임 녹화/재생 변수
+let recordedFrames = [];
+let isReplaying = false;
+let replayFrameIdx = 0;
+const REPLAY_SPEED = 0.3; // 30% 속도
+
 let currentGameMode = '3ball';
 let tableSpec = { width: 28.44, height: 14.22, ballR: 0.3075, friction: 0.991, cushionElasticity: 0.82 };
 let isSimulating = false;
@@ -164,7 +174,7 @@ function init3D() {
     
     updatePowerLabel(document.getElementById('power').value);
     updateSpinXLabel(document.getElementById('spinX').value);
-    updateSpinYLabel(document.getElementById('spinY}.value'));
+    updateSpinYLabel(document.getElementById('spinY').value);
     updateSystemHUD();
     
     animate();
@@ -300,24 +310,21 @@ function createCueStick() {
     cuePivot.add(cueGroup);
 }
 
-// 3구/4구 종목 선택에 따른 공 생성 로직
 function createBalls() {
-    // 기존 공 제거
     balls.forEach(b => scene.remove(b));
     balls = [];
 
     const r = tableSpec.ballR;
     const geo = new THREE.SphereGeometry(r, 32, 32);
 
-    cueBall = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1 }));    // 흰 공
-    objectBall1 = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.1 }));// 빨간 공 1
-    objectBall2 = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xf1c40f, roughness: 0.1 }));// 노란 공
+    cueBall = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1 }));
+    objectBall1 = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.1 }));
+    objectBall2 = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xf1c40f, roughness: 0.1 }));
 
     balls = [cueBall, objectBall1, objectBall2];
 
-    // 4구 선택 시 빨간 공 2 추가
     if (currentGameMode === '4ball') {
-        objectBall3 = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.1 })); // 빨간 공 2
+        objectBall3 = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.1 }));
         balls.push(objectBall3);
     }
 
@@ -338,7 +345,11 @@ function createAimLines() {
 
 function resetBalls() {
     isSimulating = false;
+    isReplaying = false;
+    recordedFrames = [];
+    document.getElementById('btnReplay').disabled = true;
     clearTrails();
+    
     const w = tableSpec.width, h = tableSpec.height;
 
     if (currentGameMode === '3ball') {
@@ -346,11 +357,10 @@ function resetBalls() {
         objectBall1.position.set(w/4, tableSpec.ballR, -h/6);
         objectBall2.position.set(w/3, tableSpec.ballR, h/3);
     } else {
-        // 4구 기본 배치
-        cueBall.position.set(-w/4, tableSpec.ballR, h/4);         // 수구(흰 공)
-        objectBall2.position.set(-w/4, tableSpec.ballR, -h/4);       // 상대 수구(노란 공)
-        objectBall1.position.set(w/4, tableSpec.ballR, 0);          // 목적구(빨간 공 1)
-        objectBall3.position.set(w/3, tableSpec.ballR, -h/4);        // 목적구(빨간 공 2)
+        cueBall.position.set(-w/4, tableSpec.ballR, h/4);
+        objectBall2.position.set(-w/4, tableSpec.ballR, -h/4);
+        objectBall1.position.set(w/4, tableSpec.ballR, 0);
+        objectBall3.position.set(w/3, tableSpec.ballR, -h/4);
     }
 
     balls.forEach(b => { b.userData.vx = 0; b.userData.vz = 0; });
@@ -362,10 +372,10 @@ function changeGameMode() {
     const tableTypeSelect = document.getElementById('tableType');
 
     if (currentGameMode === '4ball') {
-        tableTypeSelect.value = 'joongdae'; // 4구는 중대 기본 적용
+        tableTypeSelect.value = 'joongdae';
         tableSpec = { width: 24.4, height: 12.2, ballR: 0.3275, friction: 0.984, cushionElasticity: 0.73 };
     } else {
-        tableTypeSelect.value = 'daeda';    // 3구는 대대 기본 적용
+        tableTypeSelect.value = 'daeda';
         tableSpec = { width: 28.44, height: 14.22, ballR: 0.3075, friction: 0.991, cushionElasticity: 0.82 };
     }
 
@@ -386,7 +396,7 @@ function changeTableType() {
 function updateAimLine() {
     if (!cuePivot || !cueBall || !aimLine) return;
 
-    if (isSimulating) {
+    if (isSimulating || isReplaying) {
         cuePivot.visible = false;
         aimLine.visible = false;
         theoryLine.visible = false;
@@ -423,7 +433,7 @@ function onPointerDown(event) {
 }
 
 function onPointerUp(event) {
-    if (isSimulating || event.button !== 0) return;
+    if (isSimulating || isReplaying || event.button !== 0) return;
 
     const moveDistance = Math.hypot(event.clientX - pointerStartX, event.clientY - pointerStartY);
 
@@ -451,7 +461,11 @@ function onPointerUp(event) {
 }
 
 function shoot() {
-    if (isSimulating) return;
+    if (isSimulating || isReplaying) return;
+    
+    recordedFrames = [];
+    document.getElementById('btnReplay').disabled = true;
+
     const power = parseFloat(document.getElementById('power').value) * 0.08;
     const rad = (parseFloat(document.getElementById('aimAngle').value) * Math.PI) / 180;
 
@@ -467,6 +481,10 @@ function shoot() {
 function updatePhysics() {
     if (!isSimulating) return;
     let moving = false;
+
+    // 현재 프레임의 모든 공 위치 녹화
+    const currentFrame = balls.map(b => ({ x: b.position.x, y: b.position.y, z: b.position.z }));
+    recordedFrames.push(currentFrame);
 
     balls.forEach(ball => {
         let vX = ball.userData.vx, vZ = ball.userData.vz;
@@ -488,14 +506,52 @@ function updatePhysics() {
         }
     });
 
-    // 전체 활성화된 공 간 충돌 처리 (3개 또는 4개)
     for (let i = 0; i < balls.length; i++) {
         for (let j = i + 1; j < balls.length; j++) {
             checkBallCollision(balls[i], balls[j]);
         }
     }
 
-    if (!moving) isSimulating = false;
+    if (!moving) {
+        isSimulating = false;
+        // 샷이 끝나면 슬로우 다시보기 버튼 활성화
+        if (recordedFrames.length > 0) {
+            document.getElementById('btnReplay').disabled = false;
+        }
+        updateAimLine();
+    }
+}
+
+// 0.3배속 슬로우 재생 시작
+function playSlowReplay() {
+    if (recordedFrames.length === 0 || isSimulating || isReplaying) return;
+    
+    clearTrails();
+    isReplaying = true;
+    replayFrameIdx = 0;
+    updateAimLine();
+}
+
+// 슬로우 재생 프레임 업데이트
+function updateReplay() {
+    if (!isReplaying) return;
+
+    let idx = Math.floor(replayFrameIdx);
+    if (idx >= recordedFrames.length) {
+        isReplaying = false;
+        updateAimLine();
+        return;
+    }
+
+    const frame = recordedFrames[idx];
+    for (let i = 0; i < balls.length; i++) {
+        if (frame[i]) {
+            balls[i].position.set(frame[i].x, frame[i].y, frame[i].z);
+            createTrailPoint(balls[i].position.clone(), balls[i].material.color);
+        }
+    }
+
+    replayFrameIdx += REPLAY_SPEED;
 }
 
 function checkBallCollision(b1, b2) {
@@ -585,7 +641,13 @@ function onWindowResize() {
 
 function animate() {
     requestAnimationFrame(animate);
-    updatePhysics();
+    
+    if (isSimulating) {
+        updatePhysics();
+    } else if (isReplaying) {
+        updateReplay();
+    }
+
     if(controls) controls.update();
     renderer.render(scene, camera);
 }

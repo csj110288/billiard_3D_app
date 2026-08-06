@@ -140,7 +140,6 @@ function init3D() {
     viewport.addEventListener('pointerdown', onCanvasClick);
     window.addEventListener('resize', onWindowResize);
     
-    // 초기 표기 업데이트
     updatePowerLabel(document.getElementById('power').value);
     updateSpinXLabel(document.getElementById('spinX').value);
     updateSpinYLabel(document.getElementById('spinY').value);
@@ -154,32 +153,55 @@ function buildTable() {
     tableGroup = new THREE.Group();
 
     const w = tableSpec.width, h = tableSpec.height;
-    const railThick = 1.8;
+    const cushionThick = 0.6; // 쿠션 영역 두께
+    const woodThick = 1.2;    // 목재 테두리 두께
     const heightLevel = 0.5;
 
-    const feltMat = new THREE.MeshStandardMaterial({ color: 0x1b7d42, roughness: 0.4 });
+    // 1. 바닥 라사지 (일반 당구대 녹색)
+    const feltMat = new THREE.MeshStandardMaterial({ color: 0x1e824c, roughness: 0.4 });
     const feltBed = new THREE.Mesh(new THREE.BoxGeometry(w, 0.2, h), feltMat);
     feltBed.position.y = -0.1;
     tableGroup.add(feltBed);
 
+    // 2. 진한 딥 그린 쿠션 (내각 4면)
+    const cushionMat = new THREE.MeshStandardMaterial({ color: 0x093317, roughness: 0.3 });
+
+    const cusNorth = new THREE.Mesh(new THREE.BoxGeometry(w + cushionThick*2, heightLevel, cushionThick), cushionMat);
+    cusNorth.position.set(0, heightLevel/2 - 0.1, -h/2 - cushionThick/2);
+    tableGroup.add(cusNorth);
+
+    const cusSouth = new THREE.Mesh(new THREE.BoxGeometry(w + cushionThick*2, heightLevel, cushionThick), cushionMat);
+    cusSouth.position.set(0, heightLevel/2 - 0.1, h/2 + cushionThick/2);
+    tableGroup.add(cusSouth);
+
+    const cusEast = new THREE.Mesh(new THREE.BoxGeometry(cushionThick, heightLevel, h), cushionMat);
+    cusEast.position.set(w/2 + cushionThick/2, heightLevel/2 - 0.1, 0);
+    tableGroup.add(cusEast);
+
+    const cusWest = new THREE.Mesh(new THREE.BoxGeometry(cushionThick, heightLevel, h), cushionMat);
+    cusWest.position.set(-w/2 - cushionThick/2, heightLevel/2 - 0.1, 0);
+    tableGroup.add(cusWest);
+
+    // 3. 원목 외곽 프레임
     const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a2a18, roughness: 0.2 });
 
-    const frameNorth = new THREE.Mesh(new THREE.BoxGeometry(w + railThick*2, heightLevel, railThick), woodMat);
-    frameNorth.position.set(0, heightLevel/2 - 0.1, -h/2 - railThick/2);
+    const frameNorth = new THREE.Mesh(new THREE.BoxGeometry(w + (cushionThick + woodThick)*2, heightLevel, woodThick), woodMat);
+    frameNorth.position.set(0, heightLevel/2 - 0.1, -h/2 - cushionThick - woodThick/2);
     tableGroup.add(frameNorth);
 
-    const frameSouth = new THREE.Mesh(new THREE.BoxGeometry(w + railThick*2, heightLevel, railThick), woodMat);
-    frameSouth.position.set(0, heightLevel/2 - 0.1, h/2 + railThick/2);
+    const frameSouth = new THREE.Mesh(new THREE.BoxGeometry(w + (cushionThick + woodThick)*2, heightLevel, woodThick), woodMat);
+    frameSouth.position.set(0, heightLevel/2 - 0.1, h/2 + cushionThick + woodThick/2);
     tableGroup.add(frameSouth);
 
-    const frameEast = new THREE.Mesh(new THREE.BoxGeometry(railThick, heightLevel, h), woodMat);
-    frameEast.position.set(w/2 + railThick/2, heightLevel/2 - 0.1, 0);
+    const frameEast = new THREE.Mesh(new THREE.BoxGeometry(woodThick, heightLevel, h + cushionThick*2), woodMat);
+    frameEast.position.set(w/2 + cushionThick + woodThick/2, heightLevel/2 - 0.1, 0);
     tableGroup.add(frameEast);
 
-    const frameWest = new THREE.Mesh(new THREE.BoxGeometry(railThick, heightLevel, h), woodMat);
-    frameWest.position.set(-w/2 - railThick/2, heightLevel/2 - 0.1, 0);
+    const frameWest = new THREE.Mesh(new THREE.BoxGeometry(woodThick, heightLevel, h + cushionThick*2), woodMat);
+    frameWest.position.set(-w/2 - cushionThick - woodThick/2, heightLevel/2 - 0.1, 0);
     tableGroup.add(frameWest);
 
+    // 4. 당구대 다리
     const legGeo = new THREE.CylinderGeometry(1.2, 0.8, 10, 16);
     const legPositions = [
         [-w/2 - 0.5, -5.2, -h/2 - 0.5], [w/2 + 0.5, -5.2, -h/2 - 0.5],
@@ -191,19 +213,22 @@ function buildTable() {
         tableGroup.add(leg);
     });
 
+    // 5. 다이아몬드 포인트 (원목 프레임 상단 라인 배치)
     const pointMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const pointGeo = new THREE.SphereGeometry(0.12, 12, 12);
     const surfaceY = heightLevel - 0.1 + 0.01;
+    const pointOffsetZ = h/2 + cushionThick + woodThick/2;
+    const pointOffsetX = w/2 + cushionThick + woodThick/2;
 
     for(let i = 0; i <= 8; i++) {
         let x = -w/2 + (w/8) * i;
-        let p1 = new THREE.Mesh(pointGeo, pointMat); p1.position.set(x, surfaceY, -h/2 - railThick/2); tableGroup.add(p1);
-        let p2 = new THREE.Mesh(pointGeo, pointMat); p2.position.set(x, surfaceY, h/2 + railThick/2); tableGroup.add(p2);
+        let p1 = new THREE.Mesh(pointGeo, pointMat); p1.position.set(x, surfaceY, -pointOffsetZ); tableGroup.add(p1);
+        let p2 = new THREE.Mesh(pointGeo, pointMat); p2.position.set(x, surfaceY, pointOffsetZ); tableGroup.add(p2);
     }
     for(let j = 0; j <= 4; j++) {
         let z = -h/2 + (h/4) * j;
-        let p1 = new THREE.Mesh(pointGeo, pointMat); p1.position.set(w/2 + railThick/2, surfaceY, z); tableGroup.add(p1);
-        let p2 = new THREE.Mesh(pointGeo, pointMat); p2.position.set(-w/2 - railThick/2, surfaceY, z); tableGroup.add(p2);
+        let p1 = new THREE.Mesh(pointGeo, pointMat); p1.position.set(pointOffsetX, surfaceY, z); tableGroup.add(p1);
+        let p2 = new THREE.Mesh(pointGeo, pointMat); p2.position.set(-pointOffsetX, surfaceY, z); tableGroup.add(p2);
     }
 
     scene.add(tableGroup);
@@ -452,7 +477,6 @@ function changeTableType() {
     buildTable(); resetBalls();
 }
 
-// 스트로크 세기 (레일 세기 기준 병기)
 function updatePowerLabel(v) {
     v = parseFloat(v);
     let railTxt = "";
@@ -462,7 +486,6 @@ function updatePowerLabel(v) {
     document.getElementById('powVal').innerText = v + " m/s " + railTxt;
 }
 
-// 좌우 회전 (큐대 기준 좌/우 팁 병기)
 function updateSpinXLabel(v) {
     v = parseFloat(v);
     let valAbs = Math.abs(v);
@@ -473,7 +496,6 @@ function updateSpinXLabel(v) {
     document.getElementById('spinXVal').innerText = txt;
 }
 
-// 상하 회전
 function updateSpinYLabel(v) {
     v = parseFloat(v);
     let txt = "";

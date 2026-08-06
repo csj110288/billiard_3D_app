@@ -244,7 +244,6 @@ function updateScoringHUD() {
     }
 }
 
-// 공통 정밀 물리 계산 엔진 (실제 시뮬레이션 및 예상 경로 예측 100% 동일 수식 적용)
 function stepPhysicsState(states, spec, subSteps, events = null) {
     let isMoving = false;
 
@@ -260,26 +259,9 @@ function stepPhysicsState(states, spec, subSteps, events = null) {
 
                 b.vx *= Math.pow(spec.friction, 1 / subSteps);
                 b.vz *= Math.pow(spec.friction, 1 / subSteps);
-
-                const wB = spec.width / 2 - spec.r;
-                const hB = spec.height / 2 - spec.r;
-
-                let hitCushion = false;
-                if (Math.abs(b.x) > wB) {
-                    b.x = Math.sign(b.x) * wB;
-                    b.vx = -b.vx * spec.cushionElasticity;
-                    hitCushion = true;
-                }
-                if (Math.abs(b.z) > hB) {
-                    b.z = Math.sign(b.z) * hB;
-                    b.vz = -b.vz * spec.cushionElasticity;
-                    hitCushion = true;
-                }
-
-                if (hitCushion && events) {
-                    let speed = Math.hypot(b.vx, b.vz);
-                    events.push({ type: 'cushion', ball: b, speed: speed });
-                }
+            } else {
+                b.vx = 0;
+                b.vz = 0;
             }
         });
 
@@ -296,6 +278,12 @@ function stepPhysicsState(states, spec, subSteps, events = null) {
                     if (events) {
                         let relSpeed = Math.hypot(b1.vx - b2.vx, b1.vz - b2.vz);
                         events.push({ type: 'ball', b1: b1, b2: b2, speed: relSpeed });
+                    }
+
+                    if (dist === 0) {
+                        dx = 0.001;
+                        dz = 0;
+                        dist = 0.001;
                     }
 
                     let angle = Math.atan2(dz, dx);
@@ -319,22 +307,57 @@ function stepPhysicsState(states, spec, subSteps, events = null) {
                 }
             }
         }
+
+        states.forEach(b => {
+            const wB = spec.width / 2 - b.r;
+            const hB = spec.height / 2 - b.r;
+
+            let hitCushion = false;
+
+            if (b.x > wB) {
+                b.x = wB;
+                if (b.vx > 0) { b.vx = -b.vx * spec.cushionElasticity; hitCushion = true; }
+            } else if (b.x < -wB) {
+                b.x = -wB;
+                if (b.vx < 0) { b.vx = -b.vx * spec.cushionElasticity; hitCushion = true; }
+            }
+
+            if (b.z > hB) {
+                b.z = hB;
+                if (b.vz > 0) { b.vz = -b.vz * spec.cushionElasticity; hitCushion = true; }
+            } else if (b.z < -hB) {
+                b.z = -hB;
+                if (b.vz < 0) { b.vz = -b.vz * spec.cushionElasticity; hitCushion = true; }
+            }
+
+            if (hitCushion && events) {
+                let speed = Math.hypot(b.vx, b.vz);
+                events.push({ type: 'cushion', ball: b, speed: speed });
+            }
+        });
     }
 
     return isMoving;
 }
 
 function syncRealStatesFromMeshes() {
-    realBallStates = balls.map((b, idx) => ({
-        id: idx,
-        x: b.position.x,
-        z: b.position.z,
-        vx: b.userData.vx || 0,
-        vz: b.userData.vz || 0,
-        r: tableSpec.ballR,
-        color: b.material.color.clone(),
-        ref: b
-    }));
+    const wB = tableSpec.width / 2 - tableSpec.ballR;
+    const hB = tableSpec.height / 2 - tableSpec.ballR;
+
+    realBallStates = balls.map((b, idx) => {
+        b.position.x = Math.max(-wB, Math.min(wB, b.position.x));
+        b.position.z = Math.max(-hB, Math.min(hB, b.position.z));
+        return {
+            id: idx,
+            x: b.position.x,
+            z: b.position.z,
+            vx: b.userData.vx || 0,
+            vz: b.userData.vz || 0,
+            r: tableSpec.ballR,
+            color: b.material.color.clone(),
+            ref: b
+        };
+    });
 }
 
 function init3D() {
@@ -561,11 +584,12 @@ function resetBalls(isRandom = false) {
     clearTrails();
     resetShotScoring();
 
-    const w = tableSpec.width, h = tableSpec.height;
+    const wB = tableSpec.width / 2 - tableSpec.ballR;
+    const hB = tableSpec.height / 2 - tableSpec.ballR;
     const r = tableSpec.ballR;
-    const margin = r * 3;
-    const minX = -w/2 + margin, maxX = w/2 - margin;
-    const minZ = -h/2 + margin, maxZ = h/2 - margin;
+    const margin = r * 2.5;
+    const minX = -wB + margin, maxX = wB - margin;
+    const minZ = -hB + margin, maxZ = hB - margin;
 
     if (isRandom || savedBallPositions.length !== balls.length) {
         savedBallPositions = [];
@@ -667,14 +691,16 @@ function updateAimLine() {
     runVirtualTrajectory(rad);
 }
 
-// 100% 동일 물리 엔진 기반 정밀 가상 궤적 예측
 function runVirtualTrajectory(rad) {
     if (!balls || balls.length === 0 || !cueBall) return;
 
+    const wB = tableSpec.width / 2 - tableSpec.ballR;
+    const hB = tableSpec.height / 2 - tableSpec.ballR;
+
     let vStates = balls.map((b, idx) => ({
         id: idx,
-        x: b.position.x,
-        z: b.position.z,
+        x: Math.max(-wB, Math.min(wB, b.position.x)),
+        z: Math.max(-hB, Math.min(hB, b.position.z)),
         vx: 0,
         vz: 0,
         r: tableSpec.ballR,
@@ -839,28 +865,46 @@ function onPointerMove(event) {
     const targetPoint = new THREE.Vector3();
 
     if (raycaster.ray.intersectPlane(plane, targetPoint)) {
-        const w = tableSpec.width / 2 - tableSpec.ballR * 1.5;
-        const h = tableSpec.height / 2 - tableSpec.ballR * 1.5;
+        const wB = tableSpec.width / 2 - tableSpec.ballR;
+        const hB = tableSpec.height / 2 - tableSpec.ballR;
 
-        let newX = Math.max(-w, Math.min(w, targetPoint.x));
-        let newZ = Math.max(-h, Math.min(h, targetPoint.z));
+        draggedBall.position.x = Math.max(-wB, Math.min(wB, targetPoint.x));
+        draggedBall.position.z = Math.max(-hB, Math.min(hB, targetPoint.z));
 
-        draggedBall.position.x = newX;
-        draggedBall.position.z = newZ;
+        for (let iter = 0; iter < 3; iter++) {
+            balls.forEach(b1 => {
+                balls.forEach(b2 => {
+                    if (b1 !== b2) {
+                        let dx = b2.position.x - b1.position.x;
+                        let dz = b2.position.z - b1.position.z;
+                        let dist = Math.hypot(dx, dz);
+                        let minDist = tableSpec.ballR * 2.05;
 
-        balls.forEach(other => {
-            if (other !== draggedBall) {
-                let dx = other.position.x - draggedBall.position.x;
-                let dz = other.position.z - draggedBall.position.z;
-                let dist = Math.hypot(dx, dz);
-                let minDist = tableSpec.ballR * 2.1;
-                if (dist < minDist && dist > 0) {
-                    let angle = Math.atan2(dz, dx);
-                    other.position.x = draggedBall.position.x + Math.cos(angle) * minDist;
-                    other.position.z = draggedBall.position.z + Math.sin(angle) * minDist;
-                }
-            }
-        });
+                        if (dist < minDist) {
+                            if (dist === 0) { dx = 0.001; dz = 0; dist = 0.001; }
+                            let overlap = minDist - dist;
+                            let angle = Math.atan2(dz, dx);
+
+                            if (b1 === draggedBall) {
+                                b2.position.x += Math.cos(angle) * overlap;
+                                b2.position.z += Math.sin(angle) * overlap;
+                            } else if (b2 === draggedBall) {
+                                b1.position.x -= Math.cos(angle) * overlap;
+                                b1.position.z -= Math.sin(angle) * overlap;
+                            } else {
+                                b1.position.x -= Math.cos(angle) * overlap / 2;
+                                b1.position.z -= Math.sin(angle) * overlap / 2;
+                                b2.position.x += Math.cos(angle) * overlap / 2;
+                                b2.position.z += Math.sin(angle) * overlap / 2;
+                            }
+                        }
+                    }
+                });
+
+                b1.position.x = Math.max(-wB, Math.min(wB, b1.position.x));
+                b1.position.z = Math.max(-hB, Math.min(hB, b1.position.z));
+            });
+        }
 
         syncRealStatesFromMeshes();
         updateAimLine();

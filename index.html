@@ -8,7 +8,8 @@
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background-color: #111; color: #fff; font-family: sans-serif; overflow: hidden; width: 100vw; height: 100vh; }
         #app-container { display: flex; width: 100%; height: 100%; }
-        #viewport { flex: 1; position: relative; height: 100%; min-width: 300px; background-color: #050505; cursor: crosshair; }
+        #viewport { flex: 1; position: relative; height: 100%; min-width: 300px; background-color: #050505; cursor: grab; }
+        #viewport:active { cursor: grabbing; }
         #canvas3d { width: 100%; height: 100%; display: block; }
         
         #sidebar { width: 340px; background: #1e1e1e; padding: 20px; border-left: 1px solid #333; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; z-index: 20; }
@@ -27,7 +28,7 @@
         #hud-overlay h3 { font-size: 14px; color: #f1c40f; margin-bottom: 4px; }
         #hud-overlay p { font-size: 12px; color: #ddd; }
         .formula { font-family: monospace; color: #2ecc71; font-weight: bold; }
-        .guide-text { font-size: 11px; color: #888; margin-top: 4px; }
+        .guide-text { font-size: 11px; color: #3498db; margin-top: 6px; line-height: 1.4; }
     </style>
     <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
     <script src="https://unpkg.com/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
@@ -40,7 +41,10 @@
         <div id="hud-overlay">
             <h3 id="sysTitle">파이브 앤 하프 시스템</h3>
             <p id="sysFormula">공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span></p>
-            <p class="guide-text">💡 당구대를 클릭하면 그 방향으로 큐대와 진행선이 조준됩니다.</p>
+            <p class="guide-text">
+                👉 <b>드래그 (손가락/마우스 이동)</b>: 당구대 시점 회전<br>
+                🎯 <b>짧은 터치/클릭</b>: 1목적구 또는 원하는 지점 조준
+            </p>
         </div>
     </div>
 
@@ -104,6 +108,10 @@ let isSimulating = false;
 let raycaster = new THREE.Raycaster();
 let mouse = new THREE.Vector2();
 
+// 입력 동작 구분을 위한 좌표 변수
+let pointerStartX = 0;
+let pointerStartY = 0;
+
 function init3D() {
     const viewport = document.getElementById('viewport');
     const width = viewport.clientWidth || (window.innerWidth - 340);
@@ -137,7 +145,10 @@ function init3D() {
     createAimLines();   
     createBalls();      
 
-    viewport.addEventListener('pointerdown', onCanvasClick);
+    // 드래그(시점 회전)와 클릭(조준) 이벤트를 구분하기 위한 이벤트 바인딩
+    viewport.addEventListener('pointerdown', onPointerDown);
+    viewport.addEventListener('pointerup', onPointerUp);
+
     window.addEventListener('resize', onWindowResize);
     
     updatePowerLabel(document.getElementById('power').value);
@@ -153,17 +164,15 @@ function buildTable() {
     tableGroup = new THREE.Group();
 
     const w = tableSpec.width, h = tableSpec.height;
-    const cushionThick = 0.6; // 쿠션 영역 두께
-    const woodThick = 1.2;    // 목재 테두리 두께
+    const cushionThick = 0.6;
+    const woodThick = 1.2;
     const heightLevel = 0.5;
 
-    // 1. 바닥 라사지 (일반 당구대 녹색)
     const feltMat = new THREE.MeshStandardMaterial({ color: 0x1e824c, roughness: 0.4 });
     const feltBed = new THREE.Mesh(new THREE.BoxGeometry(w, 0.2, h), feltMat);
     feltBed.position.y = -0.1;
     tableGroup.add(feltBed);
 
-    // 2. 진한 딥 그린 쿠션 (내각 4면)
     const cushionMat = new THREE.MeshStandardMaterial({ color: 0x093317, roughness: 0.3 });
 
     const cusNorth = new THREE.Mesh(new THREE.BoxGeometry(w + cushionThick*2, heightLevel, cushionThick), cushionMat);
@@ -182,7 +191,6 @@ function buildTable() {
     cusWest.position.set(-w/2 - cushionThick/2, heightLevel/2 - 0.1, 0);
     tableGroup.add(cusWest);
 
-    // 3. 원목 외곽 프레임
     const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a2a18, roughness: 0.2 });
 
     const frameNorth = new THREE.Mesh(new THREE.BoxGeometry(w + (cushionThick + woodThick)*2, heightLevel, woodThick), woodMat);
@@ -201,7 +209,6 @@ function buildTable() {
     frameWest.position.set(-w/2 - cushionThick - woodThick/2, heightLevel/2 - 0.1, 0);
     tableGroup.add(frameWest);
 
-    // 4. 당구대 다리
     const legGeo = new THREE.CylinderGeometry(1.2, 0.8, 10, 16);
     const legPositions = [
         [-w/2 - 0.5, -5.2, -h/2 - 0.5], [w/2 + 0.5, -5.2, -h/2 - 0.5],
@@ -213,7 +220,6 @@ function buildTable() {
         tableGroup.add(leg);
     });
 
-    // 5. 다이아몬드 포인트 (원목 프레임 상단 라인 배치)
     const pointMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
     const pointGeo = new THREE.SphereGeometry(0.12, 12, 12);
     const surfaceY = heightLevel - 0.1 + 0.01;
@@ -350,27 +356,39 @@ function updateAimLine() {
     if (aimLine.computeLineDistances) aimLine.computeLineDistances();
 }
 
-function onCanvasClick(event) {
+// 터치/클릭 시작 지점 기록
+function onPointerDown(event) {
+    pointerStartX = event.clientX;
+    pointerStartY = event.clientY;
+}
+
+// 터치/클릭 종료 시 드래그 거리 판별
+function onPointerUp(event) {
     if (isSimulating || event.button !== 0) return;
-    
-    const viewport = document.getElementById('viewport');
-    const rect = viewport.getBoundingClientRect();
-    mouse.x = ((event.clientX - rect.left) / viewport.clientWidth) * 2 - 1;
-    mouse.y = -((event.clientY - rect.top) / viewport.clientHeight) * 2 + 1;
 
-    raycaster.setFromCamera(mouse, camera);
-    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-    const targetPoint = new THREE.Vector3();
+    const moveDistance = Math.hypot(event.clientX - pointerStartX, event.clientY - pointerStartY);
 
-    if (raycaster.ray.intersectPlane(plane, targetPoint)) {
-        const dx = targetPoint.x - cueBall.position.x;
-        const dz = targetPoint.z - cueBall.position.z;
-        let deg = Math.atan2(dz, dx) * (180 / Math.PI);
-        if (deg < 0) deg += 360;
+    // 드래그 거리가 6px 미만인 '짧은 터치/클릭'인 경우에만 조준점 변경
+    if (moveDistance < 6) {
+        const viewport = document.getElementById('viewport');
+        const rect = viewport.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / viewport.clientWidth) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / viewport.clientHeight) * 2 + 1;
 
-        document.getElementById('aimAngle').value = Math.round(deg);
-        document.getElementById('angleVal').innerText = Math.round(deg) + '°';
-        updateAimLine();
+        raycaster.setFromCamera(mouse, camera);
+        const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+        const targetPoint = new THREE.Vector3();
+
+        if (raycaster.ray.intersectPlane(plane, targetPoint)) {
+            const dx = targetPoint.x - cueBall.position.x;
+            const dz = targetPoint.z - cueBall.position.z;
+            let deg = Math.atan2(dz, dx) * (180 / Math.PI);
+            if (deg < 0) deg += 360;
+
+            document.getElementById('aimAngle').value = Math.round(deg);
+            document.getElementById('angleVal').innerText = Math.round(deg) + '°';
+            updateAimLine();
+        }
     }
 }
 

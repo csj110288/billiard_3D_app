@@ -18,6 +18,7 @@
         label { font-size: 12px; color: #aaa; font-weight: bold; }
         select, input[type="range"] { width: 100%; padding: 6px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; }
         .val-disp { font-size: 11px; color: #3498db; text-align: right; }
+        .thick-disp { font-size: 12px; color: #f1c40f; font-weight: bold; text-align: right; }
         .btn-group { display: flex; gap: 8px; margin-top: 5px; }
         button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         button:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -101,6 +102,11 @@
             <input type="range" id="aimAngle" min="0" max="360" value="35" oninput="document.getElementById('angleVal').innerText=this.value+'°'; updateAimLine();">
         </div>
 
+        <div class="group" style="background: #252525; padding: 8px; border-radius: 4px; border: 1px solid #333;">
+            <label>🎯 1목적구 겨냥 두께:</label>
+            <span id="thicknessVal" class="thick-disp">계산 중...</span>
+        </div>
+
         <div class="btn-group">
             <button class="btn-shoot" onclick="shoot()">샷 실행</button>
             <button class="btn-replay" id="btnReplay" onclick="playSlowReplay()" disabled>🎬 슬로우 다시보기 (0.3x)</button>
@@ -119,11 +125,10 @@ let cueBall, objectBall1, objectBall2, objectBall3;
 let balls = [];
 let ballTrails = [];
 
-// 슬로우 모션 프레임 녹화/재생 변수
 let recordedFrames = [];
 let isReplaying = false;
 let replayFrameIdx = 0;
-const REPLAY_SPEED = 0.3; // 30% 속도
+const REPLAY_SPEED = 0.3;
 
 let currentGameMode = '3ball';
 let tableSpec = { width: 28.44, height: 14.22, ballR: 0.3075, friction: 0.991, cushionElasticity: 0.82 };
@@ -425,6 +430,81 @@ function updateAimLine() {
 
     aimLine.geometry.setFromPoints([p1, p2]);
     if (aimLine.computeLineDistances) aimLine.computeLineDistances();
+
+    // 1목적구 두께 계산
+    calculateThickness(rad);
+}
+
+// 1목적구 겨냥 두께 정밀 계산 로직 (0.5/8 ~ 8/8)
+function calculateThickness(rad) {
+    if (!objectBall1 || !cueBall) return;
+
+    const thicknessEl = document.getElementById('thicknessVal');
+    const dx = objectBall1.position.x - cueBall.position.x;
+    const dz = objectBall1.position.z - cueBall.position.z;
+
+    const dirX = Math.cos(rad);
+    const dirZ = Math.sin(rad);
+
+    // 조준선 기준 사거리 (전방 거리)
+    const t = dx * dirX + dz * dirZ;
+
+    if (t <= 0) {
+        thicknessEl.innerText = "맞지 않음 (뒤쪽)";
+        thicknessEl.style.color = "#888";
+        return;
+    }
+
+    // 조준선과 1목적구 중심 간의 수직 거리 계산
+    const vDistSq = (dx * dx + dz * dz) - (t * t);
+    const vDist = Math.sqrt(Math.max(0, vDistSq));
+    const maxDist = tableSpec.ballR * 2; // 두 공 직경 기준 거리
+
+    if (vDist >= maxDist) {
+        thicknessEl.innerText = "맞지 않음 (빗나감)";
+        thicknessEl.style.color = "#888";
+        return;
+    }
+
+    // 겹침 비율 (1.0 = 정면, 0.0 = 스침)
+    const overlap = 1 - (vDist / maxDist);
+    let thickText = "";
+    let color = "#2ecc71";
+
+    if (overlap >= 0.9375) {
+        thickText = "8/8 두께 (100% 정면)";
+        color = "#e74c3c";
+    } else if (overlap >= 0.8125) {
+        thickText = "7/8 두께";
+        color = "#e67e22";
+    } else if (overlap >= 0.6875) {
+        thickText = "6/8 두께 (3/4 두께)";
+        color = "#f1c40f";
+    } else if (overlap >= 0.5625) {
+        thickText = "5/8 두께";
+        color = "#f39c12";
+    } else if (overlap >= 0.4375) {
+        thickText = "4/8 두께 (1/2 반두께)";
+        color = "#2ecc71";
+    } else if (overlap >= 0.3125) {
+        thickText = "3/8 두께";
+        color = "#1abc9c";
+    } else if (overlap >= 0.1875) {
+        thickText = "2/8 두께 (1/4 두께)";
+        color = "#3498db";
+    } else if (overlap >= 0.09375) {
+        thickText = "1/8 두께";
+        color = "#9b59b6";
+    } else if (overlap >= 0.02) {
+        thickText = "0.5/8 두께 (얇게)";
+        color = "#e84393";
+    } else {
+        thickText = "맞지 않음 (스침)";
+        color = "#888";
+    }
+
+    thicknessEl.innerText = thickText;
+    thicknessEl.style.color = color;
 }
 
 function onPointerDown(event) {
@@ -482,7 +562,6 @@ function updatePhysics() {
     if (!isSimulating) return;
     let moving = false;
 
-    // 현재 프레임의 모든 공 위치 녹화
     const currentFrame = balls.map(b => ({ x: b.position.x, y: b.position.y, z: b.position.z }));
     recordedFrames.push(currentFrame);
 
@@ -514,7 +593,6 @@ function updatePhysics() {
 
     if (!moving) {
         isSimulating = false;
-        // 샷이 끝나면 슬로우 다시보기 버튼 활성화
         if (recordedFrames.length > 0) {
             document.getElementById('btnReplay').disabled = false;
         }
@@ -522,7 +600,6 @@ function updatePhysics() {
     }
 }
 
-// 0.3배속 슬로우 재생 시작
 function playSlowReplay() {
     if (recordedFrames.length === 0 || isSimulating || isReplaying) return;
     
@@ -532,7 +609,6 @@ function playSlowReplay() {
     updateAimLine();
 }
 
-// 슬로우 재생 프레임 업데이트
 function updateReplay() {
     if (!isReplaying) return;
 

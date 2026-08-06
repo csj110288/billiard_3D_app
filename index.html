@@ -40,7 +40,7 @@
         <div id="hud-overlay">
             <h3 id="sysTitle">파이브 앤 하프 시스템</h3>
             <p id="sysFormula">공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span></p>
-            <p class="guide-text">💡 당구대를 클릭하면 그 방향으로 큐대가 조준됩니다.</p>
+            <p class="guide-text">💡 당구대를 클릭하면 그 방향으로 큐대와 진행선이 조준됩니다.</p>
         </div>
     </div>
 
@@ -285,7 +285,7 @@ function resetBalls() {
     updateAimLine();
 }
 
-// 큐대 팁에서 시작하여 수구를 통과해 길게 뻗어나가는 겨냥선 갱신
+// 큐대 및 수구 진행선 회전각 좌표계 수정
 function updateAimLine() {
     if (!cuePivot || !cueBall || !aimLine) return;
 
@@ -302,21 +302,21 @@ function updateAimLine() {
     const angleDeg = parseFloat(document.getElementById('aimAngle').value);
     const rad = (angleDeg * Math.PI) / 180;
 
+    // 수구 위치에 피벗 정렬 및 큐대 뒤쪽 배치 회전 (-rad - Math.PI / 2)
     cuePivot.position.copy(cueBall.position);
-    cuePivot.rotation.y = -rad + Math.PI / 2;
+    cuePivot.rotation.y = -rad - Math.PI / 2;
 
-    cueGroup.position.set(0, 0.08, 0.4);
+    cueGroup.position.set(0, 0.08, 0.2);
     cueGroup.rotation.x = -0.08; 
 
-    // 조준 방향 벡터
+    // 전방 진행 방향 벡터
     const aimDir = new THREE.Vector3(Math.cos(rad), 0, Math.sin(rad));
 
-    // 시작점 (p1): 큐대 팁 위치 (수구 뒤쪽 0.45 지점)
-    const p1 = cueBall.position.clone().sub(aimDir.clone().multiplyScalar(0.45));
+    // 수구 중심(또는 팁 끝)에서 시작하여 타격 전방으로 연장되는 진행선
+    const p1 = cueBall.position.clone();
     p1.y = tableSpec.ballR;
 
-    // 끝점 (p2): 수구를 지나 전방으로 멀리 연장
-    const p2 = cueBall.position.clone().add(aimDir.clone().multiplyScalar(40));
+    const p2 = p1.clone().add(aimDir.clone().multiplyScalar(40));
     p2.y = tableSpec.ballR;
 
     aimLine.geometry.setFromPoints([p1, p2]);

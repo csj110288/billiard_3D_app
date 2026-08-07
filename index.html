@@ -13,7 +13,6 @@
         #viewport:active { cursor: grabbing; }
         #canvas3d { width: 100%; height: 100%; display: block; }
         
-        /* 사이드바 컨테이너 구조 */
         #sidebar { 
             position: absolute; right: 0; top: 0; bottom: 0;
             width: 340px; background: #1e1e1e; border-left: 1px solid #333; 
@@ -26,7 +25,6 @@
             overflow-y: auto;
         }
 
-        /* 외부 노출 토글 버튼 */
         #sidebarToggleBtn {
             position: absolute; top: 15px; left: -40px;
             width: 40px; height: 44px; background: #1e1e1e;
@@ -41,7 +39,6 @@
 
         #sidebar.collapsed { transform: translateX(100%); }
 
-        /* 닫혔을 때 우측 하단에 뜨는 플로팅 퀵 버튼 바 */
         #floating-quick-bar {
             position: absolute; bottom: 20px; right: 20px;
             display: none; gap: 8px; z-index: 15;
@@ -68,6 +65,21 @@
         .val-disp { font-size: 11px; color: #3498db; text-align: right; }
         .thick-disp { font-size: 12px; color: #f1c40f; font-weight: bold; text-align: right; }
         .score-disp { font-size: 13px; font-weight: bold; text-align: center; padding: 6px; border-radius: 4px; background: #252525; border: 1px solid #444;}
+
+        /* 2D 수구 당점 위젯 스타일 */
+        #cueBallWidget {
+            width: 90px; height: 90px; border-radius: 50%;
+            background: radial-gradient(circle at 35% 35%, #ffffff, #bbb, #777);
+            border: 2px solid #555; position: relative; cursor: crosshair;
+            margin: 4px auto; box-shadow: inset 0 2px 5px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.6);
+        }
+        #cueTipDot {
+            width: 12px; height: 12px; border-radius: 50%;
+            background: #e74c3c; position: absolute;
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            border: 1.5px solid #fff; pointer-events: none;
+            box-shadow: 0 0 4px rgba(0,0,0,0.8);
+        }
         
         .btn-group { display: flex; gap: 6px; margin-top: 4px; }
         button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; }
@@ -84,7 +96,6 @@
         .btn-repeat:hover { background: #3498db; }
         .btn-clear { background: #7f8c8d; color: white; }
         
-        /* 좌측 상단 HUD */
         #hud-overlay { 
             position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.85); 
             padding: 12px; border-radius: 8px; border: 1px solid #444; 
@@ -114,7 +125,6 @@
     <div id="viewport">
         <canvas id="canvas3d"></canvas>
 
-        <!-- 좌측 상단 시스템 설명 HUD -->
         <div id="hud-overlay">
             <div class="hud-header">
                 <h3 id="sysTitle">파이브 앤 하프 시스템</h3>
@@ -125,20 +135,18 @@
                 <p class="guide-text">
                     👉 <b>드래그 (빈 공간)</b>: 당구대 시점 회전<br>
                     🎱 <b>공 클릭 후 드래그</b>: 공 수동 위치 이동<br>
-                    🔮 <b>연쇄 가상 경로</b>: 1적구 ➔ 2적구 충돌 경로 자동 적용<br>
-                    🌀 <b>회전 연동</b>: 좌우/상하 회전 적용 가상경로 변화
+                    🔴 <b>2D 당점 창</b>: 클릭/드래그로 회전(Tip) 정밀 설정<br>
+                    📚 <b>연습 배치</b>: 시스템별 10개 예제 + 이론 득점선 표기
                 </p>
             </div>
         </div>
 
-        <!-- 패널이 닫혔을 때 나타나는 플로팅 퀵 버튼 -->
         <div id="floating-quick-bar">
             <button class="btn-float-shoot" onclick="shoot()">🚀 샷 실행</button>
             <button class="btn-float-open" onclick="toggleSidebar()">⚙️ 설정 열기</button>
         </div>
     </div>
 
-    <!-- 우측 사이드바 -->
     <div id="sidebar">
         <button id="sidebarToggleBtn" onclick="toggleSidebar()">▶</button>
 
@@ -176,6 +184,22 @@
                 </select>
             </div>
 
+            <!-- 시스템별 10가지 실전 연습 배치 드롭다운 -->
+            <div class="group" style="background: #222; padding: 8px; border-radius: 4px; border: 1px solid #444;">
+                <label for="presetSelect">📚 시스템 연습 배치 (10개 예제):</label>
+                <select id="presetSelect" onchange="loadSelectedPreset()">
+                    <option value="">-- 연습 배치 선택 --</option>
+                </select>
+            </div>
+
+            <!-- 2D 수구 당점 시각화 위젯 -->
+            <div class="group" style="align-items: center; background: #222; padding: 8px; border-radius: 4px; border: 1px solid #333;">
+                <label>🔴 수구 2D 당점 (Tip 설정)</label>
+                <div id="cueBallWidget">
+                    <div id="cueTipDot"></div>
+                </div>
+            </div>
+
             <div class="group">
                 <label>스트로크 세기: <span id="powVal" class="val-disp">15 m/s (2레일 세기)</span></label>
                 <input type="range" id="power" min="5" max="30" value="15" oninput="updatePowerLabel(this.value); updateAimLine();">
@@ -183,12 +207,12 @@
 
             <div class="group">
                 <label>좌우 회전 (Side Spin): <span id="spinXVal" class="val-disp">0 Tip (중앙)</span></label>
-                <input type="range" id="spinX" min="-4" max="4" value="0" step="0.5" oninput="updateSpinXLabel(this.value); updateAimLine();">
+                <input type="range" id="spinX" min="-4" max="4" value="0" step="0.5" oninput="updateSpinXLabel(this.value); updateCueTipFromSliders(); updateAimLine();">
             </div>
 
             <div class="group">
                 <label>상하 회전 (Top/Bottom): <span id="spinYVal" class="val-disp">0 Tip (중앙)</span></label>
-                <input type="range" id="spinY" min="-4" max="4" value="0" step="0.5" oninput="updateSpinYLabel(this.value); updateAimLine();">
+                <input type="range" id="spinY" min="-4" max="4" value="0" step="0.5" oninput="updateSpinYLabel(this.value); updateCueTipFromSliders(); updateAimLine();">
             </div>
 
             <div class="group">
@@ -250,6 +274,141 @@ let pointerStartY = 0;
 let audioCtx = null;
 let realBallStates = [];
 
+// 시스템별 10가지 예제 배치 데이터
+const SYSTEM_PRESETS = {
+    fiveHalf: [
+        { name: "예제 1: 50 - 30 = 20 (기본 코너 돌리기)", cue: {x: 5, z: 5}, b1: {x: 0, z: -6.5}, b2: {x: -12, z: 2}, angle: 245, pow: 16, sx: 2, sy: 0 },
+        { name: "예제 2: 45 - 20 = 25 (짧은 비껴치기)", cue: {x: 2, z: 5}, b1: {x: -3, z: -6.5}, b2: {x: -10, z: -3}, angle: 252, pow: 15, sx: 2.5, sy: 0 },
+        { name: "예제 3: 60 - 20 = 40 (대각선 길게)", cue: {x: 10, z: 5}, b1: {x: -3, z: -6.5}, b2: {x: -5, z: 5}, angle: 230, pow: 18, sx: 3, sy: 0 },
+        { name: "예제 4: 40 - 20 = 20 (중앙 수구 코너)", cue: {x: -2, z: 5}, b1: {x: -6, z: -6.5}, b2: {x: -12, z: 2}, angle: 250, pow: 15, sx: 2, sy: 0 },
+        { name: "예제 5: 35 - 15 = 20 (짧은 각 진입)", cue: {x: -5, z: 5}, b1: {x: -8, z: -6.5}, b2: {x: -12, z: 2}, angle: 255, pow: 14, sx: 2, sy: 0 },
+        { name: "예제 6: 50 - 20 = 30 (긴 길게 뽑기)", cue: {x: 5, z: 5}, b1: {x: -3, z: -6.5}, b2: {x: -8, z: -2}, angle: 240, pow: 17, sx: 3, sy: 0 },
+        { name: "예제 7: 55 - 25 = 30 (대대 대회전 각)", cue: {x: 8, z: 5}, b1: {x: -5, z: -6.5}, b2: {x: -8, z: -2}, angle: 238, pow: 18, sx: 3, sy: 0 },
+        { name: "예제 8: 45 - 35 = 10 (초짧은 1쿠션)", cue: {x: 2, z: 5}, b1: {x: -10, z: -6.5}, b2: {x: -13, z: 5}, angle: 260, pow: 14, sx: 1.5, sy: 0 },
+        { name: "예제 9: 65 - 15 = 50 (대형 횡단/길게)", cue: {x: 12, z: 5}, b1: {x: -1, z: -6.5}, b2: {x: 0, z: 5}, angle: 220, pow: 20, sx: 3, sy: 0 },
+        { name: "예제 10: 50 - 40 = 10 (깊은 코너 샷)", cue: {x: 5, z: 5}, b1: {x: -11, z: -6.5}, b2: {x: -13, z: 5}, angle: 265, pow: 15, sx: 2, sy: 0 }
+    ],
+    plus: [
+        { name: "예제 1: 20 + 20 = 40 (기본 플러스)", cue: {x: -8, z: -5}, b1: {x: -13, z: -2}, b2: {x: 5, z: 5}, angle: 160, pow: 15, sx: 2, sy: 0 },
+        { name: "예제 2: 30 + 10 = 40 (긴 수구 플러스)", cue: {x: -2, z: -5}, b1: {x: -13, z: 2}, b2: {x: 5, z: 5}, angle: 150, pow: 16, sx: 2.5, sy: 0 },
+        { name: "예제 3: 25 + 15 = 40 (중앙 플러스)", cue: {x: -5, z: -5}, b1: {x: -13, z: 0}, b2: {x: 5, z: 5}, angle: 155, pow: 15, sx: 2, sy: 0 },
+        { name: "예제 4: 20 + 30 = 50 (길게 코너 샷)", cue: {x: -8, z: -5}, b1: {x: -13, z: -4}, b2: {x: 10, z: 5}, angle: 165, pow: 17, sx: 3, sy: 0 },
+        { name: "예제 5: 15 + 25 = 40 (짧은 수구 플러스)", cue: {x: -11, z: -5}, b1: {x: -13, z: -3}, b2: {x: 5, z: 5}, angle: 170, pow: 14, sx: 2, sy: 0 },
+        { name: "예제 6: 30 + 20 = 50 (대각선 플러스)", cue: {x: -2, z: -5}, b1: {x: -13, z: -2}, b2: {x: 10, z: 5}, angle: 150, pow: 18, sx: 3, sy: 0 },
+        { name: "예제 7: 35 + 15 = 50 (코너 깊은 수구)", cue: {x: 1, z: -5}, b1: {x: -13, z: 0}, b2: {x: 10, z: 5}, angle: 145, pow: 18, sx: 3, sy: 0 },
+        { name: "예제 8: 10 + 30 = 40 (극단 짧은 수구)", cue: {x: -13, z: -5}, b1: {x: -13, z: -4}, b2: {x: 5, z: 5}, angle: 175, pow: 14, sx: 2, sy: 0 },
+        { name: "예제 9: 25 + 25 = 50 (표준 대회전 각)", cue: {x: -5, z: -5}, b1: {x: -13, z: -3}, b2: {x: 10, z: 5}, angle: 158, pow: 17, sx: 2.5, sy: 0 },
+        { name: "예제 10: 20 + 15 = 35 (짧은 반사 각)", cue: {x: -8, z: -5}, b1: {x: -13, z: 0}, b2: {x: 2, z: 5}, angle: 155, pow: 15, sx: 2, sy: 0 }
+    ]
+};
+
+function populatePresetSelect() {
+    const mode = document.getElementById('systemMode').value;
+    const select = document.getElementById('presetSelect');
+    select.innerHTML = '<option value="">-- 연습 배치 선택 (10개 예제) --</option>';
+
+    const presets = SYSTEM_PRESETS[mode] || SYSTEM_PRESETS.fiveHalf;
+    presets.forEach((p, idx) => {
+        const opt = document.createElement('option');
+        opt.value = idx;
+        opt.innerText = p.name;
+        select.appendChild(opt);
+    });
+}
+
+function loadSelectedPreset() {
+    const mode = document.getElementById('systemMode').value;
+    const select = document.getElementById('presetSelect');
+    const idx = select.value;
+
+    if (idx === "") return;
+
+    const presets = SYSTEM_PRESETS[mode] || SYSTEM_PRESETS.fiveHalf;
+    const p = presets[idx];
+    if (!p) return;
+
+    cueBall.position.set(p.cue.x, tableSpec.ballR, p.cue.z);
+    objectBall1.position.set(p.b1.x, tableSpec.ballR, p.b1.z);
+    objectBall2.position.set(p.b2.x, tableSpec.ballR, p.b2.z);
+
+    document.getElementById('aimAngle').value = p.angle;
+    document.getElementById('power').value = p.pow;
+    document.getElementById('spinX').value = p.sx;
+    document.getElementById('spinY').value = p.sy;
+
+    updateAngleLabel(p.angle);
+    updatePowerLabel(p.pow);
+    updateSpinXLabel(p.sx);
+    updateSpinYLabel(p.sy);
+
+    updateCueTipFromSliders();
+    syncRealStatesFromMeshes();
+    updateAimLine();
+}
+
+// 2D 수구 당점 창 드래그/클릭 처리
+function setup2DCueBallWidget() {
+    const widget = document.getElementById('cueBallWidget');
+    if (!widget) return;
+
+    let isWidgetDragging = false;
+
+    function handleWidgetPointer(e) {
+        const rect = widget.getBoundingClientRect();
+        const clientX = e.clientX || (e.touches && e.touches[0].clientX);
+        const clientY = e.clientY || (e.touches && e.touches[0].clientY);
+
+        if (clientX === undefined || clientY === undefined) return;
+
+        let relX = clientX - rect.left - rect.width / 2;
+        let relY = clientY - rect.top - rect.height / 2;
+        let maxR = rect.width / 2 - 8;
+
+        let dist = Math.hypot(relX, relY);
+        if (dist > maxR) {
+            relX = (relX / dist) * maxR;
+            relY = (relY / dist) * maxR;
+        }
+
+        let sx = parseFloat(((relX / maxR) * 4).toFixed(1));
+        let sy = parseFloat((-(relY / maxR) * 4).toFixed(1));
+
+        document.getElementById('spinX').value = sx;
+        document.getElementById('spinY').value = sy;
+
+        updateSpinXLabel(sx);
+        updateSpinYLabel(sy);
+        updateCueTipDot(sx, sy);
+        updateAimLine();
+    }
+
+    widget.addEventListener('pointerdown', (e) => {
+        isWidgetDragging = true;
+        handleWidgetPointer(e);
+    });
+    window.addEventListener('pointermove', (e) => {
+        if (isWidgetDragging) handleWidgetPointer(e);
+    });
+    window.addEventListener('pointerup', () => {
+        isWidgetDragging = false;
+    });
+}
+
+function updateCueTipDot(sx, sy) {
+    const dot = document.getElementById('cueTipDot');
+    if (!dot) return;
+    let leftPct = 50 + (sx / 4) * 40;
+    let topPct = 50 - (sy / 4) * 40;
+    dot.style.left = leftPct + '%';
+    dot.style.top = topPct + '%';
+}
+
+function updateCueTipFromSliders() {
+    let sx = parseFloat(document.getElementById('spinX').value) || 0;
+    let sy = parseFloat(document.getElementById('spinY').value) || 0;
+    updateCueTipDot(sx, sy);
+}
+
 function toggleHUD() {
     const hud = document.getElementById('hud-overlay');
     const btn = document.getElementById('hudToggleBtn');
@@ -268,14 +427,12 @@ function toggleSidebar() {
     const floatBar = document.getElementById('floating-quick-bar');
 
     if (sidebar.classList.contains('collapsed')) {
-        // 사이드바 열기
         sidebar.classList.remove('collapsed');
         btn.innerText = "▶";
         if (floatBar) floatBar.style.display = "none";
         const content = document.getElementById('sidebar-content');
         if (content) content.scrollTop = 0;
     } else {
-        // 사이드바 닫기 (완전 접기)
         sidebar.classList.add('collapsed');
         btn.innerText = "◀";
         if (floatBar) floatBar.style.display = "flex";
@@ -333,6 +490,7 @@ function resetShotScoring() {
     updateScoringHUD();
 }
 
+// 득점 성공 및 실패 원인 세부 표기 HUD
 function updateScoringHUD() {
     const scoreEl = document.getElementById('scoreDisp');
     if (!scoreEl) return;
@@ -341,11 +499,7 @@ function updateScoringHUD() {
     let color = "#888";
 
     if (isSimulating) {
-        if (currentGameMode === '3ball') {
-            text = `3쿠션 진행 중 | 쿠션: ${cushionHitCount}회 | 맞은공: ${hitObjects.length}/2`;
-        } else if (currentGameMode === '4ball') {
-            text = `4구 진행 중 | 쿠션: ${cushionHitCount}회 | 맞은공: ${hitObjects.length}/2`;
-        }
+        text = `${(currentGameMode === '3ball') ? '3쿠션' : '4구'} 진행 중 | 쿠션: ${cushionHitCount}회 | 맞은공: ${hitObjects.length}/2`;
         color = "#f1c40f";
     } else if (scoreStatus === "SUCCESS") {
         if (currentGameMode === '3ball') {
@@ -356,7 +510,16 @@ function updateScoringHUD() {
         }
         color = "#2ecc71";
     } else if (scoreStatus === "FAIL") {
-        text = `❌ 득점 실패`;
+        let failReason = "";
+        if (hitObjects.length === 2) {
+            let cStr = (cushionHitCount === 0) ? "직접" : `${cushionHitCount}쿠션`;
+            failReason = ` (${cStr} - 3쿠션 미달)`;
+        } else if (hitObjects.length === 1) {
+            failReason = ` (1적구만 타격 / 쿠션: ${cushionHitCount}회)`;
+        } else {
+            failReason = ` (목적구 미타격 / 쿠션: ${cushionHitCount}회)`;
+        }
+        text = `❌ 득점 실패${failReason}`;
         color = "#e74c3c";
     } else {
         if (currentGameMode === '3ball') {
@@ -548,6 +711,9 @@ function init3D() {
 
     window.addEventListener('resize', onWindowResize);
     
+    setup2DCueBallWidget();
+    populatePresetSelect();
+
     updatePowerLabel(document.getElementById('power').value);
     updateSpinXLabel(document.getElementById('spinX').value);
     updateSpinYLabel(document.getElementById('spinY').value);
@@ -726,7 +892,7 @@ function createAimLines() {
     objAimLine3 = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xff4444, dashSize: 0.4, gapSize: 0.2 }));
     scene.add(objAimLine3);
 
-    theoryLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xf39c12 }));
+    theoryLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xe67e22, dashSize: 0.6, gapSize: 0.3 }));
     scene.add(theoryLine);
 }
 
@@ -828,12 +994,11 @@ function updateAimLine() {
         if(objAimLine) objAimLine.visible = false;
         if(objAimLine2) objAimLine2.visible = false;
         if(objAimLine3) objAimLine3.visible = false;
-        theoryLine.visible = false;
+        if(theoryLine) theoryLine.visible = false;
         return;
     }
     cuePivot.visible = true;
     aimLine.visible = true;
-    theoryLine.visible = true;
 
     const angleDeg = parseFloat(document.getElementById('aimAngle').value);
     const rad = (angleDeg * Math.PI) / 180;
@@ -925,6 +1090,13 @@ function runVirtualTrajectory(rad) {
                 line.visible = false;
             }
         }
+    }
+
+    // 시스템 가상 이론 득점 경로선 (Orange Theory Line)
+    if (theoryLine && ballPaths[0].length > 2) {
+        theoryLine.geometry.setFromPoints(ballPaths[0]);
+        if (theoryLine.computeLineDistances) theoryLine.computeLineDistances();
+        theoryLine.visible = true;
     }
 }
 
@@ -1107,7 +1279,7 @@ function onPointerUp(event) {
 
 function shoot() {
     if (isSimulating || isReplaying) return;
-    
+
     initAudio();
     resetShotScoring();
 
@@ -1252,6 +1424,8 @@ function updateSystemHUD() {
     if (mode === 'fiveHalf') { t.innerText = "파이브 앤 하프 시스템"; f.innerHTML = '공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span>'; }
     else if (mode === 'plus') { t.innerText = "플러스 시스템"; f.innerHTML = '공식: <span class="formula">1쿠션 = 수구 수 + 3쿠션 수</span>'; }
     else { t.innerText = "기본 가이드 모드"; f.innerHTML = '공식: <span class="formula">입사각 = 반사각</span>'; }
+    
+    populatePresetSelect();
 }
 
 function updatePowerLabel(v) {

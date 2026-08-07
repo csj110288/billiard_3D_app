@@ -20,7 +20,7 @@
         select, input[type="range"] { width: 100%; padding: 6px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; }
         .val-disp { font-size: 11px; color: #3498db; text-align: right; }
         .thick-disp { font-size: 12px; color: #f1c40f; font-weight: bold; text-align: right; }
-        .score-disp { font-size: 13px; font-weight: bold; text-align: center; padding: 4px; border-radius: 4px; }
+        .score-disp { font-size: 13px; font-weight: bold; text-align: center; padding: 6px; border-radius: 4px; background: #252525; border: 1px solid #444;}
         
         .btn-group { display: flex; gap: 6px; margin-top: 4px; }
         button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; }
@@ -58,7 +58,7 @@
                 👉 <b>드래그 (빈 공간)</b>: 당구대 시점 회전<br>
                 🎱 <b>공 클릭 후 드래그</b>: 공 수동 위치 이동<br>
                 🔮 <b>정밀 예상 경로</b>: 실제 물리 100% 일치 궤적<br>
-                🎯 <b>짧은 터치/클릭</b>: 목적구 정밀 조준
+                🏆 <b>자동 판정</b>: 종목별(3구/4구) 자동 득점 계산
             </p>
         </div>
     </div>
@@ -66,8 +66,8 @@
     <div id="sidebar">
         <h2>🎱 3D 당구 시뮬레이터</h2>
         
-        <div class="group" style="background: #252525; padding: 10px; border-radius: 6px; border: 1px solid #444;">
-            <label>🏆 3쿠션 득점 판정:</label>
+        <div class="group">
+            <label>🥇 실시간 득점 판정:</label>
             <div id="scoreDisp" class="score-disp" style="color: #888;">대기 중</div>
         </div>
 
@@ -223,25 +223,37 @@ function updateScoringHUD() {
     const scoreEl = document.getElementById('scoreDisp');
     if (!scoreEl) return;
 
-    if (currentGameMode !== '3ball') {
-        scoreEl.innerText = "4구 모드 (자유 연습)";
-        scoreEl.style.color = "#aaa";
-        return;
-    }
+    let text = "";
+    let color = "#888";
 
     if (isSimulating) {
-        scoreEl.innerText = `쿠션: ${cushionHitCount}회 | 목적구: ${hitObjects.length}/2`;
-        scoreEl.style.color = "#f1c40f";
+        if (currentGameMode === '3ball') {
+            text = `3쿠션 진행 중 | 쿠션: ${cushionHitCount}회 | 맞은공: ${hitObjects.length}/2`;
+        } else if (currentGameMode === '4ball') {
+            text = `4구 진행 중 | 맞은공: ${hitObjects.length}/2`;
+        }
+        color = "#f1c40f"; // Yellow
     } else if (scoreStatus === "SUCCESS") {
-        scoreEl.innerText = "🎉 득점 성공! (3쿠션 달성)";
-        scoreEl.style.color = "#2ecc71";
+        if (currentGameMode === '3ball') {
+            text = `🏆 득점 성공! (3쿠션)`;
+        } else if (currentGameMode === '4ball') {
+            text = `🎯 득점 성공! (4구)`;
+        }
+        color = "#2ecc71"; // Green
     } else if (scoreStatus === "FAIL") {
-        scoreEl.innerText = `❌ 득점 실패 (쿠션: ${cushionHitCount}회)`;
-        scoreEl.style.color = "#e74c3c";
+        text = `❌ 득점 실패`;
+        color = "#e74c3c"; // Red
     } else {
-        scoreEl.innerText = "대기 중";
-        scoreEl.style.color = "#888";
+        if (currentGameMode === '3ball') {
+            text = "3쿠션 대기 중 (3쿠션 + 2목적구 타격 필요)";
+        } else if (currentGameMode === '4ball') {
+            text = "4구 대기 중 (2목적구 타격 필요)";
+        }
+        color = "#888"; // Gray
     }
+
+    scoreEl.innerText = text;
+    scoreEl.style.color = color;
 }
 
 function stepPhysicsState(states, spec, subSteps, events = null) {
@@ -639,6 +651,825 @@ function changeGameMode() {
 
     buildTable();
     createBalls();
+    resetShotScoring();
+}
+
+function changeTableType() {
+    const type = document.getElementById('tableType').value;
+    const ballR = (currentGameMode === '4ball') ? 0.3275 : 0.3075;
+    tableSpec = (type === 'daeda') 
+        ? { width: 28.44, height: 14.22, ballR: ballR, friction: 0.991, cushionElasticity: 0.82 } 
+        : { width: 24.4, height: 12.2, ballR: ballR, friction: 0.984, cushionElasticity: 0.73 };
+    buildTable(); 
+    createBalls();
+}
+
+function updateAngleLabel(val) {
+    document.getElementById('angleVal').innerText = parseFloat(val).toFixed(1) + '°';
+}
+
+function adjustAngle(delta) {
+    let slider = document.getElementById('aimAngle');
+    let current = parseFloat(slider.value) || 0;
+    let next = (current + delta + 360) % 360;
+    slider.value = next.toFixed(1);
+    updateAngleLabel(slider.value);
+    updateAimLine();
+}
+
+function updateAimLine() {
+    if (!cuePivot || !cueBall || !aimLine) return;
+
+    if (isSimulating || isReplaying) {
+        cuePivot.visible = false;
+        aimLine.visible = false;
+        if(objAimLine) objAimLine.visible = false;
+        theoryLine.visible = false;
+        return;
+    }
+    cuePivot.visible = true;
+    aimLine.visible = true;
+    theoryLine.visible = true;
+
+    const angleDeg = parseFloat(document.getElementById('aimAngle').value);
+    const rad = (angleDeg * Math.PI) / 180;
+
+    cuePivot.position.copy(cueBall.position);
+    cuePivot.rotation.y = -rad - Math.PI / 2;
+
+    cueGroup.position.set(0, 0.08, 0.2);
+    cueGroup.rotation.x = -0.08; 
+
+    calculateThickness(rad);
+    runVirtualTrajectory(rad);
+}
+
+function runVirtualTrajectory(rad) {
+    if (!balls || balls.length === 0 || !cueBall) return;
+
+    const wB = tableSpec.width / 2 - tableSpec.ballR;
+    const hB = tableSpec.height / 2 - tableSpec.ballR;
+
+    let vStates = balls.map((b, idx) => ({
+        id: idx,
+        x: Math.max(-wB, Math.min(wB, b.position.x)),
+        z: Math.max(-hB, Math.min(hB, b.position.z)),
+        vx: 0,
+        vz: 0,
+        r: tableSpec.ballR,
+        color: b.material.color.clone()
+    }));
+
+    const power = parseFloat(document.getElementById('power').value) * 0.08;
+    vStates[0].vx = Math.cos(rad) * power;
+    vStates[0].vz = Math.sin(rad) * power;
+
+    let cuePath = [new THREE.Vector3(vStates[0].x, tableSpec.ballR, vStates[0].z)];
+    let targetObjIdx = -1;
+    let objPath = [];
+
+    const SUB_STEPS = 10;
+    const SIM_FRAMES = 250;
+
+    for (let frame = 0; frame < SIM_FRAMES; frame++) {
+        let virtEvents = [];
+        let isMoving = stepPhysicsState(vStates, tableSpec, SUB_STEPS, virtEvents);
+
+        if (targetObjIdx === -1) {
+            for (let ev of virtEvents) {
+                if (ev.type === 'ball') {
+                    if (ev.b1.id === 0) targetObjIdx = ev.b2.id;
+                    else if (ev.b2.id === 0) targetObjIdx = ev.b1.id;
+
+                    if (targetObjIdx !== -1) {
+                        objPath.push(new THREE.Vector3(vStates[targetObjIdx].x, tableSpec.ballR, vStates[targetObjIdx].z));
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (isMoving) {
+            cuePath.push(new THREE.Vector3(vStates[0].x, tableSpec.ballR, vStates[0].z));
+            if (targetObjIdx !== -1 && Math.hypot(vStates[targetObjIdx].vx, vStates[targetObjIdx].vz) > 0.001) {
+                objPath.push(new THREE.Vector3(vStates[targetObjIdx].x, tableSpec.ballR, vStates[targetObjIdx].z));
+            }
+        } else {
+            break;
+        }
+    }
+
+    if (aimLine) {
+        aimLine.geometry.setFromPoints(cuePath);
+        if (aimLine.computeLineDistances) aimLine.computeLineDistances();
+        aimLine.visible = true;
+    }
+
+    if (objAimLine) {
+        if (targetObjIdx !== -1 && objPath.length > 1) {
+            objAimLine.material.color = vStates[targetObjIdx].color;
+            objAimLine.geometry.setFromPoints(objPath);
+            if (objAimLine.computeLineDistances) objAimLine.computeLineDistances();
+            objAimLine.visible = true;
+        } else {
+            objAimLine.visible = false;
+        }
+    }
+}
+
+function calculateThickness(rad) {
+    if (!cueBall || !balls || balls.length === 0) return;
+
+    const thicknessEl = document.getElementById('thicknessVal');
+    if (!thicknessEl) return;
+
+    const dirX = Math.cos(rad);
+    const dirZ = Math.sin(rad);
+    const maxDist = tableSpec.ballR * 2;
+
+    let closestHit = null;
+    let minT = Infinity;
+
+    balls.forEach(ball => {
+        if (ball === cueBall) return;
+
+        const dx = ball.position.x - cueBall.position.x;
+        const dz = ball.position.z - cueBall.position.z;
+        const t = dx * dirX + dz * dirZ;
+
+        if (t > 0) {
+            const vDistSq = (dx * dx + dz * dz) - (t게임 종목(`gameMode`) dropdown 선택에 따라 **3구(쓰리쿠션) 모드**와 **4구 모드**의 득점 판정 방식이 자동으로 변환되도록 업데이트를 완료했습니다.
+
+### 종목별 득점 판정 규칙
+
+1.  **🥇 3구 쓰리쿠션 (`3ball`)**
+    *   수구(흰 공)가 목적구 2개를 모두 맞춰야 합니다.
+    *   **핵심**: 두 번째 목적구를 맞히기 전에 반드시 **쿠션을 3회 이상** 타격해야 득점으로 인정됩니다.
+    *   사이드바에 쿠션 카운트와 맞은 공 개수가 실시간으로 표기됩니다.
+
+2.  **🥇 4구 당구 (`4ball`)**
+    *   수구(흰 공)가 나머지 목적구(빨간 공, 노란 공) **2개를 모두 맞히면 득점**입니다.
+    *   쿠션 타격 횟수는 판정에 영향을 주지 않습니다.
+    *   사이드바에 맞은 공 개수만 표기되며, 조건 달성 시 즉시 성공으로 판정합니다.
+
+---
+
+### 터미널 업데이트 명령어
+
+터미널에서 아래 명령어를 실행하여 업데이트된 시뮬레이터를 확인해 보세요.
+
+```bash
+cd ~/billiard_3D_app
+cat << 'EOF' > index.html
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D 당구 물리 시뮬레이터</title>
+    <link rel="icon" href="data:,">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: #111; color: #fff; font-family: sans-serif; overflow: hidden; width: 100vw; height: 100vh; }
+        #app-container { display: flex; width: 100%; height: 100%; }
+        #viewport { flex: 1; position: relative; height: 100%; min-width: 300px; background-color: #050505; cursor: grab; }
+        #viewport:active { cursor: grabbing; }
+        #canvas3d { width: 100%; height: 100%; display: block; }
+        
+        #sidebar { width: 340px; background: #1e1e1e; padding: 20px; border-left: 1px solid #333; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; z-index: 20; }
+        h2 { font-size: 18px; color: #2ecc71; border-bottom: 2px solid #2ecc71; padding-bottom: 5px; }
+        .group { display: flex; flex-direction: column; gap: 4px; }
+        label { font-size: 12px; color: #aaa; font-weight: bold; }
+        select, input[type="range"] { width: 100%; padding: 6px; background: #2a2a2a; color: #fff; border: 1px solid #444; border-radius: 4px; }
+        .val-disp { font-size: 11px; color: #3498db; text-align: right; }
+        .thick-disp { font-size: 12px; color: #f1c40f; font-weight: bold; text-align: right; }
+        .score-disp { font-size: 13px; font-weight: bold; text-align: center; padding: 6px; border-radius: 4px; background: #252525; border: 1px solid #444;}
+        
+        .btn-group { display: flex; gap: 6px; margin-top: 4px; }
+        button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
+        
+        .btn-fine { padding: 6px; font-size: 11px; background: #333; color: #2ecc71; border: 1px solid #444; }
+        .btn-fine:hover { background: #444; color: #2ecc71; }
+        .btn-shoot { background: #27ae60; color: white; }
+        .btn-replay { background: #8e44ad; color: white; }
+        .btn-replay:hover:not(:disabled) { background: #9b59b6; }
+        .btn-reset { background: #e67e22; color: white; }
+        .btn-reset:hover { background: #d35400; }
+        .btn-repeat { background: #2980b9; color: white; }
+        .btn-repeat:hover { background: #3498db; }
+        .btn-clear { background: #7f8c8d; color: white; }
+        
+        #hud-overlay { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.85); padding: 12px; border-radius: 8px; border: 1px solid #444; pointer-events: none; max-width: 360px; z-index: 10; }
+        #hud-overlay h3 { font-size: 14px; color: #f1c40f; margin-bottom: 4px; }
+        #hud-overlay p { font-size: 12px; color: #ddd; }
+        .formula { font-family: monospace; color: #2ecc71; font-weight: bold; }
+        .guide-text { font-size: 11px; color: #3498db; margin-top: 6px; line-height: 1.4; }
+    </style>
+    <script src="[https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js](https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js)"></script>
+    <script src="[https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js](https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js)"></script>
+</head>
+<body>
+
+<div id="app-container">
+    <div id="viewport">
+        <canvas id="canvas3d"></canvas>
+        <div id="hud-overlay">
+            <h3 id="sysTitle">파이브 앤 하프 시스템</h3>
+            <p id="sysFormula">공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span></p>
+            <p class="guide-text">
+                👉 <b>드래그 (빈 공간)</b>: 당구대 시점 회전<br>
+                🎱 <b>공 클릭 후 드래그</b>: 공 수동 위치 이동<br>
+                🔮 <b>정밀 예상 경로</b>: 실제 물리 100% 일치 궤적<br>
+                🥇 <b>자동 판정</b>: 종목별(3구/4구) 자동 득점 계산
+            </p>
+        </div>
+    </div>
+
+    <div id="sidebar">
+        <h2>🎱 3D 당구 시뮬레이터</h2>
+        
+        <div class="group">
+            <label>🥇 실시간 득점 판정:</label>
+            <div id="scoreDisp" class="score-disp" style="color: #888;">대기 중</div>
+        </div>
+
+        <div class="group">
+            <label for="gameMode">게임 종목 선택</label>
+            <select id="gameMode" onchange="changeGameMode()">
+                <option value="3ball">3구 쓰리쿠션 (공 3개 / 61.5mm)</option>
+                <option value="4ball">4구 당구 (공 4개 / 65.5mm)</option>
+            </select>
+        </div>
+
+        <div class="group">
+            <label for="tableType">당구대 규격</label>
+            <select id="tableType" onchange="changeTableType()">
+                <option value="daeda">국제경쟁용 대대 (10-foot)</option>
+                <option value="joongdae">일반 중대 (9-foot)</option>
+            </select>
+        </div>
+
+        <div class="group">
+            <label for="systemMode">적용 시스템</label>
+            <select id="systemMode" onchange="updateSystemHUD()">
+                <option value="fiveHalf">파이브 앤 하프 시스템</option>
+                <option value="plus">플러스 시스템</option>
+                <option value="ballSystem">볼퍼스트 (옆돌리기)</option>
+                <option value="noSpin">무회전 시스템</option>
+            </select>
+        </div>
+
+        <div class="group">
+            <label>스트로크 세기: <span id="powVal" class="val-disp">15 m/s (2레일 세기)</span></label>
+            <input type="range" id="power" min="5" max="30" value="15" oninput="updatePowerLabel(this.value); updateAimLine();">
+        </div>
+
+        <div class="group">
+            <label>좌우 회전 (Side Spin): <span id="spinXVal" class="val-disp">0 Tip (중앙)</span></label>
+            <input type="range" id="spinX" min="-4" max="4" value="0" step="0.5" oninput="updateSpinXLabel(this.value)">
+        </div>
+
+        <div class="group">
+            <label>상하 회전 (Top/Bottom): <span id="spinYVal" class="val-disp">0 Tip (중앙)</span></label>
+            <input type="range" id="spinY" min="-4" max="4" value="0" step="0.5" oninput="updateSpinYLabel(this.value)">
+        </div>
+
+        <div class="group">
+            <label>조준 각도: <span id="angleVal" class="val-disp">35.0°</span></label>
+            <input type="range" id="aimAngle" min="0" max="360" value="35.0" step="0.1" oninput="updateAngleLabel(this.value); updateAimLine();">
+            <div class="btn-group">
+                <button class="btn-fine" onclick="adjustAngle(-0.5)">◀ -0.5°</button>
+                <button class="btn-fine" onclick="adjustAngle(-0.1)">◀ -0.1°</button>
+                <button class="btn-fine" onclick="adjustAngle(0.1)">+0.1° ▶</button>
+                <button class="btn-fine" onclick="adjustAngle(0.5)">+0.5° ▶</button>
+            </div>
+        </div>
+
+        <div class="group" style="background: #252525; padding: 8px; border-radius: 4px; border: 1px solid #333;">
+            <label>🎯 겨냥 목적구 & 두께:</label>
+            <span id="thicknessVal" class="thick-disp">계산 중...</span>
+        </div>
+
+        <div class="btn-group">
+            <button class="btn-shoot" onclick="shoot()">샷 실행</button>
+            <button class="btn-replay" id="btnReplay" onclick="playSlowReplay()" disabled>🎬 슬로우 (0.3x)</button>
+        </div>
+        <div class="btn-group">
+            <button class="btn-reset" onclick="resetBalls(true)">🎲 랜덤 배치</button>
+            <button class="btn-repeat" onclick="resetBalls(false)">🔄 동일 배치 반복</button>
+        </div>
+        <div class="btn-group">
+            <button class="btn-clear" onclick="clearTrails()">궤적 잔상 지우기</button>
+        </div>
+    </div>
+</div>
+
+<script>
+let scene, camera, renderer, controls;
+let tableGroup, cuePivot, cueGroup, aimLine, objAimLine, theoryLine;
+let cueBall, objectBall1, objectBall2, objectBall3;
+let balls = [];
+let ballTrails = [];
+
+let savedBallPositions = [];
+let recordedFrames = [];
+let isReplaying = false;
+let replayFrameIdx = 0;
+const REPLAY_SPEED = 0.3;
+
+let isDraggingBall = false;
+let draggedBall = null;
+
+let currentGameMode = '3ball';
+let tableSpec = { width: 28.44, height: 14.22, ballR: 0.3075, friction: 0.991, cushionElasticity: 0.82 };
+let isSimulating = false;
+let raycaster = new THREE.Raycaster();
+let mouse = new THREE.Vector2();
+
+let pointerStartX = 0;
+let pointerStartY = 0;
+
+let audioCtx = null;
+let realBallStates = [];
+
+function initAudio() {
+    if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+    }
+}
+
+function playCollisionSound(speed, isCushion = false) {
+    if (!audioCtx) return;
+    try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        const now = audioCtx.currentTime;
+        const intensity = Math.min(Math.max(speed * 1.5, 0.05), 1.0);
+
+        if (isCushion) {
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(280, now);
+            osc.frequency.exponentialRampToValueAtTime(70, now + 0.08);
+            gain.gain.setValueAtTime(intensity * 0.6, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        } else {
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(1300 + Math.random() * 150, now);
+            osc.frequency.exponentialRampToValueAtTime(120, now + 0.05);
+            gain.gain.setValueAtTime(intensity, now);
+            gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+        }
+
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.09);
+    } catch(e) {}
+}
+
+let cushionHitCount = 0;
+let hitObjects = [];
+let scoreStatus = "NONE";
+
+function resetShotScoring() {
+    cushionHitCount = 0;
+    hitObjects = [];
+    scoreStatus = "NONE";
+    updateScoringHUD();
+}
+
+function updateScoringHUD() {
+    const scoreEl = document.getElementById('scoreDisp');
+    if (!scoreEl) return;
+
+    let text = "";
+    let color = "#888";
+
+    if (isSimulating) {
+        if (currentGameMode === '3ball') {
+            text = `3쿠션 진행 중 | 쿠션: ${cushionHitCount}회 | 맞은공: ${hitObjects.length}/2`;
+        } else if (currentGameMode === '4ball') {
+            text = `4구 진행 중 | 맞은공: ${hitObjects.length}/2`;
+        }
+        color = "#f1c40f"; // Yellow
+    } else if (scoreStatus === "SUCCESS") {
+        if (currentGameMode === '3ball') {
+            text = `🏆 득점 성공! (3쿠션)`;
+        } else if (currentGameMode === '4ball') {
+            text = `🎯 득점 성공! (4구)`;
+        }
+        color = "#2ecc71"; // Green
+    } else if (scoreStatus === "FAIL") {
+        text = `❌ 득점 실패`;
+        color = "#e74c3c"; // Red
+    } else {
+        if (currentGameMode === '3ball') {
+            text = "3쿠션 대기 중 (3쿠션 + 2목적구 타격 필요)";
+        } else if (currentGameMode === '4ball') {
+            text = "4구 대기 중 (2목적구 타격 필요)";
+        }
+        color = "#888"; // Gray
+    }
+
+    scoreEl.innerText = text;
+    scoreEl.style.color = color;
+}
+
+// 공통 정밀 물리 계산 엔진 (강화된 이탈 방지 포함)
+function stepPhysicsState(states, spec, subSteps, events = null) {
+    let isMoving = false;
+
+    for (let step = 0; step < subSteps; step++) {
+        states.forEach(b => {
+            if (Math.hypot(b.vx, b.vz) > 0.001) {
+                isMoving = true;
+                let vX = b.vx / subSteps;
+                let vZ = b.vz / subSteps;
+
+                b.x += vX;
+                b.z += vZ;
+
+                b.vx *= Math.pow(spec.friction, 1 / subSteps);
+                b.vz *= Math.pow(spec.friction, 1 / subSteps);
+            } else {
+                b.vx = 0;
+                b.vz = 0;
+            }
+        });
+
+        for (let i = 0; i < states.length; i++) {
+            for (let j = i + 1; j < states.length; j++) {
+                let b1 = states[i];
+                let b2 = states[j];
+                let dx = b2.x - b1.x;
+                let dz = b2.z - b1.z;
+                let dist = Math.hypot(dx, dz);
+                let minDist = b1.r + b2.r;
+
+                if (dist < minDist) {
+                    if (events) {
+                        let relSpeed = Math.hypot(b1.vx - b2.vx, b1.vz - b2.vz);
+                        events.push({ type: 'ball', b1: b1, b2: b2, speed: relSpeed });
+                    }
+
+                    if (dist === 0) { dx = 0.001; dz = 0; dist = 0.001; }
+
+                    let angle = Math.atan2(dz, dx);
+                    let sin = Math.sin(angle), cos = Math.cos(angle);
+
+                    let vx1 = b1.vx * cos + b1.vz * sin;
+                    let vz1 = b1.vz * cos - b1.vx * sin;
+                    let vx2 = b2.vx * cos + b2.vz * sin;
+                    let vz2 = b2.vz * cos - b2.vx * sin;
+
+                    b1.vx = vx2 * cos - vz1 * sin;
+                    b1.vz = vz1 * cos + vx2 * sin;
+                    b2.vx = vx1 * cos - vz2 * sin;
+                    b2.vz = vz2 * cos + vx1 * sin;
+
+                    let overlap = minDist - dist;
+                    b1.x -= Math.cos(angle) * overlap / 2;
+                    b1.z -= Math.sin(angle) * overlap / 2;
+                    b2.x += Math.cos(angle) * overlap / 2;
+                    b2.z += Math.sin(angle) * overlap / 2;
+                }
+            }
+        }
+
+        states.forEach(b => {
+            const wB = spec.width / 2 - b.r;
+            const hB = spec.height / 2 - b.r;
+
+            let hitCushion = false;
+            if (b.x > wB) {
+                b.x = wB;
+                if (b.vx > 0) { b.vx = -b.vx * spec.cushionElasticity; hitCushion = true; }
+            } else if (b.x < -wB) {
+                b.x = -wB;
+                if (b.vx < 0) { b.vx = -b.vx * spec.cushionElasticity; hitCushion = true; }
+            }
+
+            if (b.z > hB) {
+                b.z = hB;
+                if (b.vz > 0) { b.vz = -b.vz * spec.cushionElasticity; hitCushion = true; }
+            } else if (b.z < -hB) {
+                b.z = -hB;
+                if (b.vz < 0) { b.vz = -b.vz * spec.cushionElasticity; hitCushion = true; }
+            }
+
+            if (hitCushion && events) {
+                let speed = Math.hypot(b.vx, b.vz);
+                events.push({ type: 'cushion', ball: b, speed: speed });
+            }
+        });
+    }
+    return isMoving;
+}
+
+function syncRealStatesFromMeshes() {
+    const wB = tableSpec.width / 2 - tableSpec.ballR;
+    const hB = tableSpec.height / 2 - tableSpec.ballR;
+
+    realBallStates = balls.map((b, idx) => {
+        b.position.x = Math.max(-wB, Math.min(wB, b.position.x));
+        b.position.z = Math.max(-hB, Math.min(hB, b.position.z));
+        return {
+            id: idx,
+            x: b.position.x,
+            z: b.position.z,
+            vx: b.userData.vx || 0,
+            vz: b.userData.vz || 0,
+            r: tableSpec.ballR,
+            color: b.material.color.clone(),
+            ref: b
+        };
+    });
+}
+
+function init3D() {
+    const viewport = document.getElementById('viewport');
+    const width = viewport.clientWidth || (window.innerWidth - 340);
+    const height = viewport.clientHeight || window.innerHeight;
+
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111111);
+
+    camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 1000);
+    camera.position.set(0, 25, 30);
+
+    renderer = new THREE.WebGLRenderer({ canvas: document.getElementById('canvas3d'), antialias: true });
+    renderer.setSize(width, height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+    if (typeof THREE.OrbitControls !== 'undefined') {
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.maxPolarAngle = Math.PI / 2 - 0.02;
+    }
+
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
+
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    dirLight.position.set(10, 40, 20);
+    scene.add(dirLight);
+
+    buildTable();
+    createCueStick();   
+    createAimLines();   
+    createBalls();      
+
+    const domCanvas = renderer.domElement;
+    domCanvas.addEventListener('pointerdown', onPointerDown);
+    domCanvas.addEventListener('pointermove', onPointerMove);
+    domCanvas.addEventListener('pointerup', onPointerUp);
+
+    window.addEventListener('resize', onWindowResize);
+    
+    updatePowerLabel(document.getElementById('power').value);
+    updateSpinXLabel(document.getElementById('spinX').value);
+    updateSpinYLabel(document.getElementById('spinY').value);
+    updateAngleLabel(document.getElementById('aimAngle').value);
+    updateSystemHUD();
+    
+    animate();
+}
+
+function buildTable() {
+    if(tableGroup) scene.remove(tableGroup);
+    tableGroup = new THREE.Group();
+
+    const w = tableSpec.width, h = tableSpec.height;
+    const cushionThick = 0.6;
+    const woodThick = 1.2;
+    const heightLevel = 0.5;
+
+    const feltMat = new THREE.MeshStandardMaterial({ color: 0x1e824c, roughness: 0.4 });
+    const feltBed = new THREE.Mesh(new THREE.BoxGeometry(w, 0.2, h), feltMat);
+    feltBed.position.y = -0.1;
+    tableGroup.add(feltBed);
+
+    const cushionMat = new THREE.MeshStandardMaterial({ color: 0x093317, roughness: 0.3 });
+
+    const cusNorth = new THREE.Mesh(new THREE.BoxGeometry(w + cushionThick*2, heightLevel, cushionThick), cushionMat);
+    cusNorth.position.set(0, heightLevel/2 - 0.1, -h/2 - cushionThick/2);
+    tableGroup.add(cusNorth);
+
+    const cusSouth = new THREE.Mesh(new THREE.BoxGeometry(w + cushionThick*2, heightLevel, cushionThick), cushionMat);
+    cusSouth.position.set(0, heightLevel/2 - 0.1, h/2 + cushionThick/2);
+    tableGroup.add(cusSouth);
+
+    const cusEast = new THREE.Mesh(new THREE.BoxGeometry(cushionThick, heightLevel, h), cushionMat);
+    cusEast.position.set(w/2 + cushionThick/2, heightLevel/2 - 0.1, 0);
+    tableGroup.add(cusEast);
+
+    const cusWest = new THREE.Mesh(new THREE.BoxGeometry(cushionThick, heightLevel, h), cushionMat);
+    cusWest.position.set(-w/2 - cushionThick/2, heightLevel/2 - 0.1, 0);
+    tableGroup.add(cusWest);
+
+    const woodMat = new THREE.MeshStandardMaterial({ color: 0x4a2a18, roughness: 0.2 });
+
+    const frameNorth = new THREE.Mesh(new THREE.BoxGeometry(w + (cushionThick + woodThick)*2, heightLevel, woodThick), woodMat);
+    frameNorth.position.set(0, heightLevel/2 - 0.1, -h/2 - cushionThick - woodThick/2);
+    tableGroup.add(frameNorth);
+
+    const frameSouth = new THREE.Mesh(new THREE.BoxGeometry(w + (cushionThick + woodThick)*2, heightLevel, woodThick), woodMat);
+    frameSouth.position.set(0, heightLevel/2 - 0.1, h/2 + cushionThick + woodThick/2);
+    tableGroup.add(frameSouth);
+
+    const frameEast = new THREE.Mesh(new THREE.BoxGeometry(woodThick, heightLevel, h + cushionThick*2), woodMat);
+    frameEast.position.set(w/2 + cushionThick + woodThick/2, heightLevel/2 - 0.1, 0);
+    tableGroup.add(frameEast);
+
+    const frameWest = new THREE.Mesh(new THREE.BoxGeometry(woodThick, heightLevel, h + cushionThick*2), woodMat);
+    frameWest.position.set(-w/2 - cushionThick - woodThick/2, heightLevel/2 - 0.1, 0);
+    tableGroup.add(frameWest);
+
+    const legGeo = new THREE.CylinderGeometry(1.2, 0.8, 10, 16);
+    const legPositions = [
+        [-w/2 - 0.5, -5.2, -h/2 - 0.5], [w/2 + 0.5, -5.2, -h/2 - 0.5],
+        [-w/2 - 0.5, -5.2, h/2 + 0.5], [w/2 + 0.5, -5.2, h/2 + 0.5]
+    ];
+    legPositions.forEach(pos => {
+        const leg = new THREE.Mesh(legGeo, woodMat);
+        leg.position.set(...pos);
+        tableGroup.add(leg);
+    });
+
+    const pointMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const pointGeo = new THREE.SphereGeometry(0.12, 12, 12);
+    const surfaceY = heightLevel - 0.1 + 0.01;
+    const pointOffsetZ = h/2 + cushionThick + woodThick/2;
+    const pointOffsetX = w/2 + cushionThick + woodThick/2;
+
+    for(let i = 0; i <= 8; i++) {
+        let x = -w/2 + (w/8) * i;
+        let p1 = new THREE.Mesh(pointGeo, pointMat); p1.position.set(x, surfaceY, -pointOffsetZ); tableGroup.add(p1);
+        let p2 = new THREE.Mesh(pointGeo, pointMat); p2.position.set(x, surfaceY, pointOffsetZ); tableGroup.add(p2);
+    }
+    for(let j = 0; j <= 4; j++) {
+        let z = -h/2 + (h/4) * j;
+        let p1 = new THREE.Mesh(pointGeo, pointMat); p1.position.set(pointOffsetX, surfaceY, z); tableGroup.add(p1);
+        let p2 = new THREE.Mesh(pointGeo, pointMat); p2.position.set(-pointOffsetX, surfaceY, z); tableGroup.add(p2);
+    }
+
+    scene.add(tableGroup);
+}
+
+function createCueStick() {
+    cuePivot = new THREE.Group();
+    scene.add(cuePivot);
+
+    cueGroup = new THREE.Group();
+
+    const tipGeo = new THREE.CylinderGeometry(0.05, 0.05, 0.1, 16);
+    tipGeo.rotateX(Math.PI / 2);
+    tipGeo.translate(0, 0, 0.05);
+    const tipMat = new THREE.MeshStandardMaterial({ color: 0x1f3a52, roughness: 0.9 });
+    const tipMesh = new THREE.Mesh(tipGeo, tipMat);
+    cueGroup.add(tipMesh);
+
+    const ferruleGeo = new THREE.CylinderGeometry(0.052, 0.055, 0.25, 16);
+    ferruleGeo.rotateX(Math.PI / 2);
+    ferruleGeo.translate(0, 0, 0.225);
+    const ferruleMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.2 });
+    cueGroup.add(new THREE.Mesh(ferruleGeo, ferruleMat));
+
+    const shaftGeo = new THREE.CylinderGeometry(0.055, 0.1, 7.15, 16);
+    shaftGeo.rotateX(Math.PI / 2);
+    shaftGeo.translate(0, 0, 3.925);
+    const shaftMat = new THREE.MeshStandardMaterial({ color: 0xf3e5ab, roughness: 0.4 });
+    cueGroup.add(new THREE.Mesh(shaftGeo, shaftMat));
+
+    const ringGeo = new THREE.CylinderGeometry(0.102, 0.102, 0.15, 16);
+    ringGeo.rotateX(Math.PI / 2);
+    ringGeo.translate(0, 0, 7.575);
+    const ringMat = new THREE.MeshStandardMaterial({ color: 0xcccccc, metalness: 0.8, roughness: 0.2 });
+    cueGroup.add(new THREE.Mesh(ringGeo, ringMat));
+
+    const buttGeo = new THREE.CylinderGeometry(0.102, 0.15, 7.35, 16);
+    buttGeo.rotateX(Math.PI / 2);
+    buttGeo.translate(0, 0, 11.325);
+    const buttMat = new THREE.MeshStandardMaterial({ color: 0x2b1810, roughness: 0.3 });
+    const buttMesh = new THREE.Mesh(buttGeo, buttMat);
+
+    const patternMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, metalness: 0.6, roughness: 0.3 });
+    [9.5, 12.0, 14.2].forEach(zPos => {
+        const pRingGeo = new THREE.CylinderGeometry(0.12, 0.13, 0.2, 16);
+        pRingGeo.rotateX(Math.PI / 2);
+        pRingGeo.translate(0, 0, zPos);
+        cueGroup.add(new THREE.Mesh(pRingGeo, patternMat));
+    });
+
+    cueGroup.add(buttMesh);
+    cuePivot.add(cueGroup);
+}
+
+function createBalls() {
+    balls.forEach(b => scene.remove(b));
+    balls = [];
+
+    const r = tableSpec.ballR;
+    const geo = new THREE.SphereGeometry(r, 32, 32);
+
+    cueBall = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1 }));
+    objectBall1 = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.1 }));
+    objectBall2 = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xf1c40f, roughness: 0.1 }));
+
+    balls = [cueBall, objectBall1, objectBall2];
+
+    if (currentGameMode === '4ball') {
+        objectBall3 = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color: 0xcc1111, roughness: 0.1 }));
+        balls.push(objectBall3);
+    }
+
+    balls.forEach(b => {
+        b.userData = { vx: 0, vz: 0, spinX: 0, spinY: 0 };
+        scene.add(b);
+    });
+
+    resetBalls(true);
+}
+
+function createAimLines() {
+    aimLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.4, gapSize: 0.2 }));
+    scene.add(aimLine);
+
+    objAimLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xff4444, dashSize: 0.4, gapSize: 0.2 }));
+    scene.add(objAimLine);
+
+    theoryLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xf39c12 }));
+    scene.add(theoryLine);
+}
+
+function resetBalls(isRandom = false) {
+    isSimulating = false;
+    isReplaying = false;
+    recordedFrames = [];
+    document.getElementById('btnReplay').disabled = true;
+    clearTrails();
+    resetShotScoring();
+
+    const wB = tableSpec.width / 2 - tableSpec.ballR;
+    const hB = tableSpec.height / 2 - tableSpec.ballR;
+    const r = tableSpec.ballR;
+    const margin = r * 2.5;
+    const minX = -wB + margin, maxX = wB - margin;
+    const minZ = -hB + margin, maxZ = hB - margin;
+
+    if (isRandom || savedBallPositions.length !== balls.length) {
+        savedBallPositions = [];
+        balls.forEach(() => {
+            let posX, posZ, valid;
+            let attempts = 0;
+            do {
+                valid = true;
+                posX = minX + Math.random() * (maxX - minX);
+                posZ = minZ + Math.random() * (maxZ - minZ);
+                for (let p of savedBallPositions) {
+                    if (Math.hypot(posX - p.x, posZ - p.z) < r * 2.8) {
+                        valid = false;
+                        break;
+                    }
+                }
+                attempts++;
+            } while (!valid && attempts < 300);
+
+            savedBallPositions.push({ x: posX, z: posZ });
+        });
+    }
+
+    balls.forEach((ball, idx) => {
+        if (savedBallPositions[idx]) {
+            ball.position.set(savedBallPositions[idx].x, r, savedBallPositions[idx].z);
+        }
+        ball.userData.vx = 0;
+        ball.userData.vz = 0;
+    });
+
+    syncRealStatesFromMeshes();
+    updateAimLine();
+}
+
+function changeGameMode() {
+    currentGameMode = document.getElementById('gameMode').value;
+    const tableTypeSelect = document.getElementById('tableType');
+
+    if (currentGameMode === '4ball') {
+        tableTypeSelect.value = 'joongdae';
+        tableSpec = { width: 24.4, height: 12.2, ballR: 0.3275, friction: 0.984, cushionElasticity: 0.73 };
+    } else {
+        tableTypeSelect.value = 'daeda';
+        tableSpec = { width: 28.44, height: 14.22, ballR: 0.3075, friction: 0.991, cushionElasticity: 0.82 };
+    }
+
+    buildTable();
+    createBalls();
+    resetShotScoring();
 }
 
 function changeTableType() {
@@ -871,40 +1702,30 @@ function onPointerMove(event) {
         draggedBall.position.x = Math.max(-wB, Math.min(wB, targetPoint.x));
         draggedBall.position.z = Math.max(-hB, Math.min(hB, targetPoint.z));
 
-        for (let iter = 0; iter < 3; iter++) {
-            balls.forEach(b1 => {
-                balls.forEach(b2 => {
-                    if (b1 !== b2) {
-                        let dx = b2.position.x - b1.position.x;
-                        let dz = b2.position.z - b1.position.z;
-                        let dist = Math.hypot(dx, dz);
-                        let minDist = tableSpec.ballR * 2.05;
-
-                        if (dist < minDist) {
-                            if (dist === 0) { dx = 0.001; dz = 0; dist = 0.001; }
-                            let overlap = minDist - dist;
-                            let angle = Math.atan2(dz, dx);
-
-                            if (b1 === draggedBall) {
-                                b2.position.x += Math.cos(angle) * overlap;
-                                b2.position.z += Math.sin(angle) * overlap;
-                            } else if (b2 === draggedBall) {
-                                b1.position.x -= Math.cos(angle) * overlap;
-                                b1.position.z -= Math.sin(angle) * overlap;
-                            } else {
-                                b1.position.x -= Math.cos(angle) * overlap / 2;
-                                b1.position.z -= Math.sin(angle) * overlap / 2;
-                                b2.position.x += Math.cos(angle) * overlap / 2;
-                                b2.position.z += Math.sin(angle) * overlap / 2;
-                            }
+        balls.forEach(b1 => {
+            balls.forEach(b2 => {
+                if (b1 !== b2) {
+                    let dx = b2.position.x - b1.position.x;
+                    let dz = b2.position.z - b1.position.z;
+                    let dist = Math.hypot(dx, dz);
+                    let minDist = tableSpec.ballR * 2.05;
+                    if (dist < minDist) {
+                        if (dist === 0) { dx = 0.001; dz = 0; dist = 0.001; }
+                        let overlap = minDist - dist;
+                        let angle = Math.atan2(dz, dx);
+                        if (b1 === draggedBall) {
+                            b2.position.x += Math.cos(angle) * overlap;
+                            b2.position.z += Math.sin(angle) * overlap;
+                        } else if (b2 === draggedBall) {
+                            b1.position.x -= Math.cos(angle) * overlap;
+                            b1.position.z -= Math.sin(angle) * overlap;
                         }
                     }
-                });
-
-                b1.position.x = Math.max(-wB, Math.min(wB, b1.position.x));
-                b1.position.z = Math.max(-hB, Math.min(hB, b1.position.z));
+                }
             });
-        }
+            b1.position.x = Math.max(-wB, Math.min(wB, b1.position.x));
+            b1.position.z = Math.max(-hB, Math.min(hB, b1.position.z));
+        });
 
         syncRealStatesFromMeshes();
         updateAimLine();
@@ -1008,8 +1829,15 @@ function updatePhysics() {
                 let targetMesh = balls[targetId];
                 if (targetMesh && !hitObjects.includes(targetMesh)) {
                     hitObjects.push(targetMesh);
-                    if (hitObjects.length === 2 && cushionHitCount >= 3) {
-                        scoreStatus = "SUCCESS";
+                    
+                    if (currentGameMode === '3ball') {
+                        if (hitObjects.length === 2 && cushionHitCount >= 3) {
+                            scoreStatus = "SUCCESS";
+                        }
+                    } else if (currentGameMode === '4ball') {
+                        if (hitObjects.length === 2) {
+                            scoreStatus = "SUCCESS";
+                        }
                     }
                     updateScoringHUD();
                 }

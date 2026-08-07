@@ -13,32 +13,52 @@
         #viewport:active { cursor: grabbing; }
         #canvas3d { width: 100%; height: 100%; display: block; }
         
+        /* 사이드바 컨테이너 구조 */
         #sidebar { 
-            width: 340px; background: #1e1e1e; padding: 20px; border-left: 1px solid #333; 
-            display: flex; flex-direction: column; gap: 12px; overflow-y: auto; z-index: 20; 
-            transition: transform 0.3s ease, right 0.3s ease; position: relative;
+            position: absolute; right: 0; top: 0; bottom: 0;
+            width: 340px; background: #1e1e1e; border-left: 1px solid #333; 
+            z-index: 20; transition: transform 0.3s ease;
         }
 
-        #sidebar-toggle-btn {
-            position: absolute; top: 15px; left: -36px;
-            width: 36px; height: 44px; background: #1e1e1e;
+        #sidebar-content {
+            width: 100%; height: 100%; padding: 20px;
+            display: flex; flex-direction: column; gap: 12px;
+            overflow-y: auto;
+        }
+
+        /* 외부 노출 토글 버튼 */
+        #sidebarToggleBtn {
+            position: absolute; top: 15px; left: -40px;
+            width: 40px; height: 44px; background: #1e1e1e;
             border: 1px solid #444; border-right: none;
             border-radius: 8px 0 0 8px; color: #2ecc71;
             font-size: 16px; font-weight: bold; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
-            z-index: 25; box-shadow: -2px 0 5px rgba(0,0,0,0.5);
-            transition: background 0.2s;
+            z-index: 25; box-shadow: -3px 0 6px rgba(0,0,0,0.5);
+            transition: background 0.2s, color 0.2s;
         }
-        #sidebar-toggle-btn:hover { background: #2a2a2a; color: #f1c40f; }
+        #sidebarToggleBtn:hover { background: #2a2a2a; color: #f1c40f; }
 
         #sidebar.collapsed { transform: translateX(100%); }
-        #sidebar.half-peek { transform: translateX(50%); }
+
+        /* 닫혔을 때 우측 하단에 뜨는 플로팅 퀵 버튼 바 */
+        #floating-quick-bar {
+            position: absolute; bottom: 20px; right: 20px;
+            display: none; gap: 8px; z-index: 15;
+            background: rgba(0,0,0,0.8); padding: 8px 12px;
+            border-radius: 8px; border: 1px solid #444;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+        }
+        #floating-quick-bar button {
+            padding: 8px 14px; border: none; border-radius: 4px;
+            font-weight: bold; font-size: 12px; cursor: pointer;
+        }
+        .btn-float-shoot { background: #27ae60; color: #fff; }
+        .btn-float-open { background: #f39c12; color: #fff; }
 
         @media (max-width: 768px) {
-            #sidebar {
-                position: absolute; right: 0; top: 0; bottom: 0; height: 100%;
-                box-shadow: -5px 0 15px rgba(0,0,0,0.7);
-            }
+            #sidebar { width: 300px; }
+            #floating-quick-bar { bottom: 15px; right: 15px; }
         }
 
         h2 { font-size: 18px; color: #2ecc71; border-bottom: 2px solid #2ecc71; padding-bottom: 5px; }
@@ -64,6 +84,7 @@
         .btn-repeat:hover { background: #3498db; }
         .btn-clear { background: #7f8c8d; color: white; }
         
+        /* 좌측 상단 HUD */
         #hud-overlay { 
             position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.85); 
             padding: 12px; border-radius: 8px; border: 1px solid #444; 
@@ -76,7 +97,7 @@
             border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; 
         }
         .hud-toggle-btn:hover { background: #333; }
-        #hud-content { margin-top: 6px; transition: max-height 0.3s ease; }
+        #hud-content { margin-top: 6px; }
         #hud-overlay.collapsed #hud-content { display: none; }
         #hud-overlay.collapsed { padding: 8px 12px; }
 
@@ -92,6 +113,8 @@
 <div id="app-container">
     <div id="viewport">
         <canvas id="canvas3d"></canvas>
+
+        <!-- 좌측 상단 시스템 설명 HUD -->
         <div id="hud-overlay">
             <div class="hud-header">
                 <h3 id="sysTitle">파이브 앤 하프 시스템</h3>
@@ -107,85 +130,94 @@
                 </p>
             </div>
         </div>
+
+        <!-- 패널이 닫혔을 때 나타나는 플로팅 퀵 버튼 -->
+        <div id="floating-quick-bar">
+            <button class="btn-float-shoot" onclick="shoot()">🚀 샷 실행</button>
+            <button class="btn-float-open" onclick="toggleSidebar()">⚙️ 설정 열기</button>
+        </div>
     </div>
 
+    <!-- 우측 사이드바 -->
     <div id="sidebar">
         <button id="sidebarToggleBtn" onclick="toggleSidebar()">▶</button>
 
-        <h2>🎱 3D 당구 시뮬레이터</h2>
-        
-        <div class="group">
-            <label>🥇 실시간 득점 판정:</label>
-            <div id="scoreDisp" class="score-disp" style="color: #888;">대기 중</div>
-        </div>
-
-        <div class="group">
-            <label for="gameMode">게임 종목 선택</label>
-            <select id="gameMode" onchange="changeGameMode()">
-                <option value="3ball">3구 쓰리쿠션 (공 3개 / 61.5mm)</option>
-                <option value="4ball">4구 당구 (공 4개 / 65.5mm)</option>
-            </select>
-        </div>
-
-        <div class="group">
-            <label for="tableType">당구대 규격</label>
-            <select id="tableType" onchange="changeTableType()">
-                <option value="daeda">국제경쟁용 대대 (10-foot)</option>
-                <option value="joongdae">일반 중대 (9-foot)</option>
-            </select>
-        </div>
-
-        <div class="group">
-            <label for="systemMode">적용 시스템</label>
-            <select id="systemMode" onchange="updateSystemHUD()">
-                <option value="fiveHalf">파이브 앤 하프 시스템</option>
-                <option value="plus">플러스 시스템</option>
-                <option value="ballSystem">볼퍼스트 (옆돌리기)</option>
-                <option value="noSpin">무회전 시스템</option>
-            </select>
-        </div>
-
-        <div class="group">
-            <label>스트로크 세기: <span id="powVal" class="val-disp">15 m/s (2레일 세기)</span></label>
-            <input type="range" id="power" min="5" max="30" value="15" oninput="updatePowerLabel(this.value); updateAimLine(); autoHalfPeekMobile();">
-        </div>
-
-        <div class="group">
-            <label>좌우 회전 (Side Spin): <span id="spinXVal" class="val-disp">0 Tip (중앙)</span></label>
-            <input type="range" id="spinX" min="-4" max="4" value="0" step="0.5" oninput="updateSpinXLabel(this.value); updateAimLine(); autoHalfPeekMobile();">
-        </div>
-
-        <div class="group">
-            <label>상하 회전 (Top/Bottom): <span id="spinYVal" class="val-disp">0 Tip (중앙)</span></label>
-            <input type="range" id="spinY" min="-4" max="4" value="0" step="0.5" oninput="updateSpinYLabel(this.value); updateAimLine(); autoHalfPeekMobile();">
-        </div>
-
-        <div class="group">
-            <label>조준 각도: <span id="angleVal" class="val-disp">35.0°</span></label>
-            <input type="range" id="aimAngle" min="0" max="360" value="35.0" step="0.1" oninput="updateAngleLabel(this.value); updateAimLine(); autoHalfPeekMobile();">
-            <div class="btn-group">
-                <button class="btn-fine" onclick="adjustAngle(-0.5)">◀ -0.5°</button>
-                <button class="btn-fine" onclick="adjustAngle(-0.1)">◀ -0.1°</button>
-                <button class="btn-fine" onclick="adjustAngle(0.1)">+0.1° ▶</button>
-                <button class="btn-fine" onclick="adjustAngle(0.5)">+0.5° ▶</button>
+        <div id="sidebar-content">
+            <h2>🎱 3D 당구 시뮬레이터</h2>
+            
+            <div class="group">
+                <label>🥇 실시간 득점 판정:</label>
+                <div id="scoreDisp" class="score-disp" style="color: #888;">대기 중</div>
             </div>
-        </div>
 
-        <div class="group" style="background: #252525; padding: 8px; border-radius: 4px; border: 1px solid #333;">
-            <label>🎯 겨냥 목적구 & 두께:</label>
-            <span id="thicknessVal" class="thick-disp">계산 중...</span>
-        </div>
+            <div class="group">
+                <label for="gameMode">게임 종목 선택</label>
+                <select id="gameMode" onchange="changeGameMode()">
+                    <option value="3ball">3구 쓰리쿠션 (공 3개 / 61.5mm)</option>
+                    <option value="4ball">4구 당구 (공 4개 / 65.5mm)</option>
+                </select>
+            </div>
 
-        <div class="btn-group">
-            <button class="btn-shoot" onclick="shoot()">샷 실행</button>
-            <button class="btn-replay" id="btnReplay" onclick="playSlowReplay()" disabled>🎬 슬로우 (0.3x)</button>
-        </div>
-        <div class="btn-group">
-            <button class="btn-reset" onclick="resetBalls(true)">🎲 랜덤 배치</button>
-            <button class="btn-repeat" onclick="resetBalls(false)">🔄 동일 배치 반복</button>
-        </div>
-        <div class="btn-group">
-            <button class="btn-clear" onclick="clearTrails()">궤적 잔상 지우기</button>
+            <div class="group">
+                <label for="tableType">당구대 규격</label>
+                <select id="tableType" onchange="changeTableType()">
+                    <option value="daeda">국제경쟁용 대대 (10-foot)</option>
+                    <option value="joongdae">일반 중대 (9-foot)</option>
+                </select>
+            </div>
+
+            <div class="group">
+                <label for="systemMode">적용 시스템</label>
+                <select id="systemMode" onchange="updateSystemHUD()">
+                    <option value="fiveHalf">파이브 앤 하프 시스템</option>
+                    <option value="plus">플러스 시스템</option>
+                    <option value="ballSystem">볼퍼스트 (옆돌리기)</option>
+                    <option value="noSpin">무회전 시스템</option>
+                </select>
+            </div>
+
+            <div class="group">
+                <label>스트로크 세기: <span id="powVal" class="val-disp">15 m/s (2레일 세기)</span></label>
+                <input type="range" id="power" min="5" max="30" value="15" oninput="updatePowerLabel(this.value); updateAimLine();">
+            </div>
+
+            <div class="group">
+                <label>좌우 회전 (Side Spin): <span id="spinXVal" class="val-disp">0 Tip (중앙)</span></label>
+                <input type="range" id="spinX" min="-4" max="4" value="0" step="0.5" oninput="updateSpinXLabel(this.value); updateAimLine();">
+            </div>
+
+            <div class="group">
+                <label>상하 회전 (Top/Bottom): <span id="spinYVal" class="val-disp">0 Tip (중앙)</span></label>
+                <input type="range" id="spinY" min="-4" max="4" value="0" step="0.5" oninput="updateSpinYLabel(this.value); updateAimLine();">
+            </div>
+
+            <div class="group">
+                <label>조준 각도: <span id="angleVal" class="val-disp">35.0°</span></label>
+                <input type="range" id="aimAngle" min="0" max="360" value="35.0" step="0.1" oninput="updateAngleLabel(this.value); updateAimLine();">
+                <div class="btn-group">
+                    <button class="btn-fine" onclick="adjustAngle(-0.5)">◀ -0.5°</button>
+                    <button class="btn-fine" onclick="adjustAngle(-0.1)">◀ -0.1°</button>
+                    <button class="btn-fine" onclick="adjustAngle(0.1)">+0.1° ▶</button>
+                    <button class="btn-fine" onclick="adjustAngle(0.5)">+0.5° ▶</button>
+                </div>
+            </div>
+
+            <div class="group" style="background: #252525; padding: 8px; border-radius: 4px; border: 1px solid #333;">
+                <label>🎯 겨냥 목적구 & 두께:</label>
+                <span id="thicknessVal" class="thick-disp">계산 중...</span>
+            </div>
+
+            <div class="btn-group">
+                <button class="btn-shoot" onclick="shoot()">샷 실행</button>
+                <button class="btn-replay" id="btnReplay" onclick="playSlowReplay()" disabled>🎬 슬로우 (0.3x)</button>
+            </div>
+            <div class="btn-group">
+                <button class="btn-reset" onclick="resetBalls(true)">🎲 랜덤 배치</button>
+                <button class="btn-repeat" onclick="resetBalls(false)">🔄 동일 배치 반복</button>
+            </div>
+            <div class="btn-group">
+                <button class="btn-clear" onclick="clearTrails()">궤적 잔상 지우기</button>
+            </div>
         </div>
     </div>
 </div>
@@ -233,29 +265,20 @@ function toggleHUD() {
 function toggleSidebar() {
     const sidebar = document.getElementById('sidebar');
     const btn = document.getElementById('sidebarToggleBtn');
+    const floatBar = document.getElementById('floating-quick-bar');
 
-    if (sidebar.classList.contains('collapsed') || sidebar.classList.contains('half-peek')) {
-        sidebar.classList.remove('collapsed', 'half-peek');
+    if (sidebar.classList.contains('collapsed')) {
+        // 사이드바 열기
+        sidebar.classList.remove('collapsed');
         btn.innerText = "▶";
-        sidebar.scrollTop = 0;
+        if (floatBar) floatBar.style.display = "none";
+        const content = document.getElementById('sidebar-content');
+        if (content) content.scrollTop = 0;
     } else {
-        if (window.innerWidth <= 768) {
-            sidebar.classList.add('half-peek');
-        } else {
-            sidebar.classList.add('collapsed');
-        }
+        // 사이드바 닫기 (완전 접기)
+        sidebar.classList.add('collapsed');
         btn.innerText = "◀";
-    }
-}
-
-function autoHalfPeekMobile() {
-    if (window.innerWidth <= 768) {
-        const sidebar = document.getElementById('sidebar');
-        const btn = document.getElementById('sidebarToggleBtn');
-        if (!sidebar.classList.contains('half-peek') && !sidebar.classList.contains('collapsed')) {
-            sidebar.classList.add('half-peek');
-            btn.innerText = "◀";
-        }
+        if (floatBar) floatBar.style.display = "flex";
     }
 }
 
@@ -794,7 +817,6 @@ function adjustAngle(delta) {
     slider.value = next.toFixed(1);
     updateAngleLabel(slider.value);
     updateAimLine();
-    autoHalfPeekMobile();
 }
 
 function updateAimLine() {
@@ -1085,8 +1107,6 @@ function onPointerUp(event) {
 
 function shoot() {
     if (isSimulating || isReplaying) return;
-
-    autoHalfPeekMobile();
     
     initAudio();
     resetShotScoring();

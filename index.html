@@ -8,12 +8,39 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background-color: #111; color: #fff; font-family: sans-serif; overflow: hidden; width: 100vw; height: 100vh; }
-        #app-container { display: flex; width: 100%; height: 100%; }
+        #app-container { display: flex; width: 100%; height: 100%; position: relative; }
         #viewport { flex: 1; position: relative; height: 100%; min-width: 300px; background-color: #050505; cursor: grab; }
         #viewport:active { cursor: grabbing; }
         #canvas3d { width: 100%; height: 100%; display: block; }
         
-        #sidebar { width: 340px; background: #1e1e1e; padding: 20px; border-left: 1px solid #333; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; z-index: 20; }
+        #sidebar { 
+            width: 340px; background: #1e1e1e; padding: 20px; border-left: 1px solid #333; 
+            display: flex; flex-direction: column; gap: 12px; overflow-y: auto; z-index: 20; 
+            transition: transform 0.3s ease, right 0.3s ease; position: relative;
+        }
+
+        #sidebar-toggle-btn {
+            position: absolute; top: 15px; left: -36px;
+            width: 36px; height: 44px; background: #1e1e1e;
+            border: 1px solid #444; border-right: none;
+            border-radius: 8px 0 0 8px; color: #2ecc71;
+            font-size: 16px; font-weight: bold; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            z-index: 25; box-shadow: -2px 0 5px rgba(0,0,0,0.5);
+            transition: background 0.2s;
+        }
+        #sidebar-toggle-btn:hover { background: #2a2a2a; color: #f1c40f; }
+
+        #sidebar.collapsed { transform: translateX(100%); }
+        #sidebar.half-peek { transform: translateX(50%); }
+
+        @media (max-width: 768px) {
+            #sidebar {
+                position: absolute; right: 0; top: 0; bottom: 0; height: 100%;
+                box-shadow: -5px 0 15px rgba(0,0,0,0.7);
+            }
+        }
+
         h2 { font-size: 18px; color: #2ecc71; border-bottom: 2px solid #2ecc71; padding-bottom: 5px; }
         .group { display: flex; flex-direction: column; gap: 4px; }
         label { font-size: 12px; color: #aaa; font-weight: bold; }
@@ -37,9 +64,23 @@
         .btn-repeat:hover { background: #3498db; }
         .btn-clear { background: #7f8c8d; color: white; }
         
-        #hud-overlay { position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.85); padding: 12px; border-radius: 8px; border: 1px solid #444; pointer-events: none; max-width: 360px; z-index: 10; }
-        #hud-overlay h3 { font-size: 14px; color: #f1c40f; margin-bottom: 4px; }
-        #hud-overlay p { font-size: 12px; color: #ddd; }
+        #hud-overlay { 
+            position: absolute; top: 15px; left: 15px; background: rgba(0,0,0,0.85); 
+            padding: 12px; border-radius: 8px; border: 1px solid #444; 
+            max-width: 360px; z-index: 10; transition: all 0.3s ease;
+        }
+        .hud-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+        #hud-overlay h3 { font-size: 14px; color: #f1c40f; margin: 0; }
+        .hud-toggle-btn { 
+            background: #222; border: 1px solid #555; color: #f1c40f; 
+            border-radius: 4px; padding: 2px 6px; font-size: 11px; cursor: pointer; 
+        }
+        .hud-toggle-btn:hover { background: #333; }
+        #hud-content { margin-top: 6px; transition: max-height 0.3s ease; }
+        #hud-overlay.collapsed #hud-content { display: none; }
+        #hud-overlay.collapsed { padding: 8px 12px; }
+
+        #sysFormula { font-size: 12px; color: #ddd; }
         .formula { font-family: monospace; color: #2ecc71; font-weight: bold; }
         .guide-text { font-size: 11px; color: #3498db; margin-top: 6px; line-height: 1.4; }
     </style>
@@ -52,18 +93,25 @@
     <div id="viewport">
         <canvas id="canvas3d"></canvas>
         <div id="hud-overlay">
-            <h3 id="sysTitle">파이브 앤 하프 시스템</h3>
-            <p id="sysFormula">공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span></p>
-            <p class="guide-text">
-                👉 <b>드래그 (빈 공간)</b>: 당구대 시점 회전<br>
-                🎱 <b>공 클릭 후 드래그</b>: 공 수동 위치 이동<br>
-                🔮 <b>가상 경로</b>: 수구, 1적구, 2적구 진행경로 연동<br>
-                🌀 <b>회전 연동</b>: 좌우/상하 회전 적용 가상경로 변화
-            </p>
+            <div class="hud-header">
+                <h3 id="sysTitle">파이브 앤 하프 시스템</h3>
+                <button id="hudToggleBtn" class="hud-toggle-btn" onclick="toggleHUD()">▲ 접기</button>
+            </div>
+            <div id="hud-content">
+                <p id="sysFormula">공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span></p>
+                <p class="guide-text">
+                    👉 <b>드래그 (빈 공간)</b>: 당구대 시점 회전<br>
+                    🎱 <b>공 클릭 후 드래그</b>: 공 수동 위치 이동<br>
+                    🔮 <b>연쇄 가상 경로</b>: 1적구 ➔ 2적구 충돌 경로 자동 적용<br>
+                    🌀 <b>회전 연동</b>: 좌우/상하 회전 적용 가상경로 변화
+                </p>
+            </div>
         </div>
     </div>
 
     <div id="sidebar">
+        <button id="sidebarToggleBtn" onclick="toggleSidebar()">▶</button>
+
         <h2>🎱 3D 당구 시뮬레이터</h2>
         
         <div class="group">
@@ -99,22 +147,22 @@
 
         <div class="group">
             <label>스트로크 세기: <span id="powVal" class="val-disp">15 m/s (2레일 세기)</span></label>
-            <input type="range" id="power" min="5" max="30" value="15" oninput="updatePowerLabel(this.value); updateAimLine();">
+            <input type="range" id="power" min="5" max="30" value="15" oninput="updatePowerLabel(this.value); updateAimLine(); autoHalfPeekMobile();">
         </div>
 
         <div class="group">
             <label>좌우 회전 (Side Spin): <span id="spinXVal" class="val-disp">0 Tip (중앙)</span></label>
-            <input type="range" id="spinX" min="-4" max="4" value="0" step="0.5" oninput="updateSpinXLabel(this.value); updateAimLine();">
+            <input type="range" id="spinX" min="-4" max="4" value="0" step="0.5" oninput="updateSpinXLabel(this.value); updateAimLine(); autoHalfPeekMobile();">
         </div>
 
         <div class="group">
             <label>상하 회전 (Top/Bottom): <span id="spinYVal" class="val-disp">0 Tip (중앙)</span></label>
-            <input type="range" id="spinY" min="-4" max="4" value="0" step="0.5" oninput="updateSpinYLabel(this.value); updateAimLine();">
+            <input type="range" id="spinY" min="-4" max="4" value="0" step="0.5" oninput="updateSpinYLabel(this.value); updateAimLine(); autoHalfPeekMobile();">
         </div>
 
         <div class="group">
             <label>조준 각도: <span id="angleVal" class="val-disp">35.0°</span></label>
-            <input type="range" id="aimAngle" min="0" max="360" value="35.0" step="0.1" oninput="updateAngleLabel(this.value); updateAimLine();">
+            <input type="range" id="aimAngle" min="0" max="360" value="35.0" step="0.1" oninput="updateAngleLabel(this.value); updateAimLine(); autoHalfPeekMobile();">
             <div class="btn-group">
                 <button class="btn-fine" onclick="adjustAngle(-0.5)">◀ -0.5°</button>
                 <button class="btn-fine" onclick="adjustAngle(-0.1)">◀ -0.1°</button>
@@ -144,7 +192,7 @@
 
 <script>
 let scene, camera, renderer, controls;
-let tableGroup, cuePivot, cueGroup, aimLine, objAimLine, objAimLine2, theoryLine;
+let tableGroup, cuePivot, cueGroup, aimLine, objAimLine, objAimLine2, objAimLine3, theoryLine;
 let cueBall, objectBall1, objectBall2, objectBall3;
 let balls = [];
 let ballTrails = [];
@@ -169,6 +217,47 @@ let pointerStartY = 0;
 
 let audioCtx = null;
 let realBallStates = [];
+
+function toggleHUD() {
+    const hud = document.getElementById('hud-overlay');
+    const btn = document.getElementById('hudToggleBtn');
+    if (hud.classList.contains('collapsed')) {
+        hud.classList.remove('collapsed');
+        btn.innerText = "▲ 접기";
+    } else {
+        hud.classList.add('collapsed');
+        btn.innerText = "▼ 열기";
+    }
+}
+
+function toggleSidebar() {
+    const sidebar = document.getElementById('sidebar');
+    const btn = document.getElementById('sidebarToggleBtn');
+
+    if (sidebar.classList.contains('collapsed') || sidebar.classList.contains('half-peek')) {
+        sidebar.classList.remove('collapsed', 'half-peek');
+        btn.innerText = "▶";
+        sidebar.scrollTop = 0;
+    } else {
+        if (window.innerWidth <= 768) {
+            sidebar.classList.add('half-peek');
+        } else {
+            sidebar.classList.add('collapsed');
+        }
+        btn.innerText = "◀";
+    }
+}
+
+function autoHalfPeekMobile() {
+    if (window.innerWidth <= 768) {
+        const sidebar = document.getElementById('sidebar');
+        const btn = document.getElementById('sidebarToggleBtn');
+        if (!sidebar.classList.contains('half-peek') && !sidebar.classList.contains('collapsed')) {
+            sidebar.classList.add('half-peek');
+            btn.innerText = "◀";
+        }
+    }
+}
 
 function initAudio() {
     if (!audioCtx) {
@@ -234,7 +323,7 @@ function updateScoringHUD() {
         } else if (currentGameMode === '4ball') {
             text = `4구 진행 중 | 쿠션: ${cushionHitCount}회 | 맞은공: ${hitObjects.length}/2`;
         }
-        color = "#f1c40f"; // Yellow
+        color = "#f1c40f";
     } else if (scoreStatus === "SUCCESS") {
         if (currentGameMode === '3ball') {
             text = `🏆 득점 성공! (${scoredCushionCount}쿠션)`;
@@ -242,29 +331,27 @@ function updateScoringHUD() {
             let cushionStr = (scoredCushionCount === 0) ? "직접" : `${scoredCushionCount}쿠션`;
             text = `🎯 득점 성공! (${cushionStr})`;
         }
-        color = "#2ecc71"; // Green
+        color = "#2ecc71";
     } else if (scoreStatus === "FAIL") {
         text = `❌ 득점 실패`;
-        color = "#e74c3c"; // Red
+        color = "#e74c3c";
     } else {
         if (currentGameMode === '3ball') {
             text = "3쿠션 대기 중 (3쿠션 이상 + 2목적구 타격)";
         } else if (currentGameMode === '4ball') {
             text = "4구 대기 중 (2목적구 타격)";
         }
-        color = "#888"; // Gray
+        color = "#888";
     }
 
     scoreEl.innerText = text;
     scoreEl.style.color = color;
 }
 
-// 상하/좌우 회전(Spin X/Y)이 반영된 정밀 물리 엔진
 function stepPhysicsState(states, spec, subSteps, events = null) {
     let isMoving = false;
 
     for (let step = 0; step < subSteps; step++) {
-        // 1. 위치 이동 및 마찰 감쇄
         states.forEach(b => {
             if (Math.hypot(b.vx, b.vz) > 0.001) {
                 isMoving = true;
@@ -282,7 +369,6 @@ function stepPhysicsState(states, spec, subSteps, events = null) {
             }
         });
 
-        // 2. 공 간 탄성 충돌 및 상하 회전(Spin Y) 밀어치기/끌어치기 반영
         for (let i = 0; i < states.length; i++) {
             for (let j = i + 1; j < states.length; j++) {
                 let b1 = states[i];
@@ -313,9 +399,7 @@ function stepPhysicsState(states, spec, subSteps, events = null) {
                     let newVx2 = vx1;
                     let newVz2 = vz2;
 
-                    // 수구(id 0) 충돌 시 상하회전(Spin Y) 보정
                     if (b1.id === 0 && b1.spinY !== undefined) {
-                        // spinY > 0: Follow (밀어치기), spinY < 0: Draw (끌어치기)
                         let followImpulse = b1.spinY * 0.12 * Math.abs(vx1);
                         newVx1 += followImpulse;
                     }
@@ -334,7 +418,6 @@ function stepPhysicsState(states, spec, subSteps, events = null) {
             }
         }
 
-        // 3. 쿠션 반사 및 좌우 회전(Spin X) 굴절 반영
         states.forEach(b => {
             const wB = spec.width / 2 - b.r;
             const hB = spec.height / 2 - b.r;
@@ -358,14 +441,11 @@ function stepPhysicsState(states, spec, subSteps, events = null) {
                 if (b.vz < 0) { b.vz = -b.vz * spec.cushionElasticity; hitCushion = true; dirZ = 1; }
             }
 
-            // 수구 쿠션 부딪힘 시 Spin X 회전 굴절 적용
             if (hitCushion && b.id === 0 && b.spinX !== undefined) {
                 let spinEffect = b.spinX * 0.06;
                 if (dirX !== 0) {
-                    // 세로 쿠션 충돌 -> Z축 속도에 회전 굴절 적용
                     b.vz += dirX * spinEffect * Math.abs(b.vx);
                 } else if (dirZ !== 0) {
-                    // 가로 쿠션 충돌 -> X축 속도에 회전 굴절 적용
                     b.vx -= dirZ * spinEffect * Math.abs(b.vz);
                 }
             }
@@ -614,13 +694,14 @@ function createAimLines() {
     aimLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.4, gapSize: 0.2 }));
     scene.add(aimLine);
 
-    // 1적구 가상선
     objAimLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xff4444, dashSize: 0.4, gapSize: 0.2 }));
     scene.add(objAimLine);
 
-    // 2적구 가상선
     objAimLine2 = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xffff44, dashSize: 0.4, gapSize: 0.2 }));
     scene.add(objAimLine2);
+
+    objAimLine3 = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xff4444, dashSize: 0.4, gapSize: 0.2 }));
+    scene.add(objAimLine3);
 
     theoryLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0xf39c12 }));
     scene.add(theoryLine);
@@ -713,6 +794,7 @@ function adjustAngle(delta) {
     slider.value = next.toFixed(1);
     updateAngleLabel(slider.value);
     updateAimLine();
+    autoHalfPeekMobile();
 }
 
 function updateAimLine() {
@@ -723,6 +805,7 @@ function updateAimLine() {
         aimLine.visible = false;
         if(objAimLine) objAimLine.visible = false;
         if(objAimLine2) objAimLine2.visible = false;
+        if(objAimLine3) objAimLine3.visible = false;
         theoryLine.visible = false;
         return;
     }
@@ -743,7 +826,6 @@ function updateAimLine() {
     runVirtualTrajectory(rad);
 }
 
-// 회전(Spin X/Y) 연동 및 1적구, 2적구 가상 진행경로 동시 추적
 function runVirtualTrajectory(rad) {
     if (!balls || balls.length === 0 || !cueBall) return;
 
@@ -769,11 +851,12 @@ function runVirtualTrajectory(rad) {
     vStates[0].vx = Math.cos(rad) * power;
     vStates[0].vz = Math.sin(rad) * power;
 
-    let cuePath = [new THREE.Vector3(vStates[0].x, tableSpec.ballR, vStates[0].z)];
-    let targetObjIdx1 = -1;
-    let targetObjIdx2 = -1;
-    let objPath1 = [];
-    let objPath2 = [];
+    let ballPaths = balls.map(b => []);
+    vStates.forEach((b, idx) => {
+        ballPaths[idx].push(new THREE.Vector3(b.x, tableSpec.ballR, b.z));
+    });
+
+    let ballMoved = balls.map((b, idx) => idx === 0);
 
     const SUB_STEPS = 10;
     const SIM_FRAMES = 250;
@@ -784,62 +867,41 @@ function runVirtualTrajectory(rad) {
 
         for (let ev of virtEvents) {
             if (ev.type === 'ball') {
-                let hitId = -1;
-                if (ev.b1.id === 0) hitId = ev.b2.id;
-                else if (ev.b2.id === 0) hitId = ev.b1.id;
-
-                if (hitId !== -1) {
-                    if (targetObjIdx1 === -1) {
-                        targetObjIdx1 = hitId;
-                        objPath1.push(new THREE.Vector3(vStates[hitId].x, tableSpec.ballR, vStates[hitId].z));
-                    } else if (targetObjIdx2 === -1 && hitId !== targetObjIdx1) {
-                        targetObjIdx2 = hitId;
-                        objPath2.push(new THREE.Vector3(vStates[hitId].x, tableSpec.ballR, vStates[hitId].z));
-                    }
-                }
+                ballMoved[ev.b1.id] = true;
+                ballMoved[ev.b2.id] = true;
             }
         }
 
         if (isMoving) {
-            cuePath.push(new THREE.Vector3(vStates[0].x, tableSpec.ballR, vStates[0].z));
-            if (targetObjIdx1 !== -1 && Math.hypot(vStates[targetObjIdx1].vx, vStates[targetObjIdx1].vz) > 0.001) {
-                objPath1.push(new THREE.Vector3(vStates[targetObjIdx1].x, tableSpec.ballR, vStates[targetObjIdx1].z));
-            }
-            if (targetObjIdx2 !== -1 && Math.hypot(vStates[targetObjIdx2].vx, vStates[targetObjIdx2].vz) > 0.001) {
-                objPath2.push(new THREE.Vector3(vStates[targetObjIdx2].x, tableSpec.ballR, vStates[targetObjIdx2].z));
-            }
+            vStates.forEach((b, idx) => {
+                if (ballMoved[idx] && Math.hypot(b.vx, b.vz) > 0.0001) {
+                    ballPaths[idx].push(new THREE.Vector3(b.x, tableSpec.ballR, b.z));
+                }
+            });
         } else {
             break;
         }
     }
 
     if (aimLine) {
-        aimLine.geometry.setFromPoints(cuePath);
+        aimLine.geometry.setFromPoints(ballPaths[0]);
         if (aimLine.computeLineDistances) aimLine.computeLineDistances();
         aimLine.visible = true;
     }
 
-    // 1적구 가상경로 렌더링
-    if (objAimLine) {
-        if (targetObjIdx1 !== -1 && objPath1.length > 1) {
-            objAimLine.material.color = vStates[targetObjIdx1].color;
-            objAimLine.geometry.setFromPoints(objPath1);
-            if (objAimLine.computeLineDistances) objAimLine.computeLineDistances();
-            objAimLine.visible = true;
-        } else {
-            objAimLine.visible = false;
-        }
-    }
+    let lineObjs = [null, objAimLine, objAimLine2, objAimLine3];
 
-    // 2적구 가상경로 렌더링
-    if (objAimLine2) {
-        if (targetObjIdx2 !== -1 && objPath2.length > 1) {
-            objAimLine2.material.color = vStates[targetObjIdx2].color;
-            objAimLine2.geometry.setFromPoints(objPath2);
-            if (objAimLine2.computeLineDistances) objAimLine2.computeLineDistances();
-            objAimLine2.visible = true;
-        } else {
-            objAimLine2.visible = false;
+    for (let idx = 1; idx < balls.length; idx++) {
+        let line = lineObjs[idx];
+        if (line) {
+            if (ballMoved[idx] && ballPaths[idx].length > 1) {
+                line.material.color = balls[idx].material.color;
+                line.geometry.setFromPoints(ballPaths[idx]);
+                if (line.computeLineDistances) line.computeLineDistances();
+                line.visible = true;
+            } else {
+                line.visible = false;
+            }
         }
     }
 }
@@ -1023,6 +1085,8 @@ function onPointerUp(event) {
 
 function shoot() {
     if (isSimulating || isReplaying) return;
+
+    autoHalfPeekMobile();
     
     initAudio();
     resetShotScoring();

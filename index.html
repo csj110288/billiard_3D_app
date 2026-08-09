@@ -422,7 +422,9 @@ function loadSelectedPreset() {
     objectBall1.position.set(p.b1.x, tableSpec.ballR, p.b1.z);
     objectBall2.position.set(p.b2.x, tableSpec.ballR, p.b2.z);
 
-    // 1적구를 정확히 겨냥하도록 수학적 각도 계산 후 오프셋 적용
+    // ★ 버그 수정: 시스템 예제를 선택했을 때 그 위치를 메모리에 즉시 기억시켜둠!
+    savedBallPositions = balls.map(b => ({ x: b.position.x, z: b.position.z }));
+
     let dx = p.b1.x - p.cue.x;
     let dz = p.b1.z - p.cue.z;
     let baseAngle = Math.atan2(dz, dx) * 180 / Math.PI;
@@ -442,7 +444,6 @@ function loadSelectedPreset() {
     syncRealStatesFromMeshes();
     updateAimLine();
 
-    // 학습자 가이드 텍스트 업데이트
     document.getElementById('preset-title-display').style.display = 'block';
     let sysName = (mode === 'fiveHalf') ? '파이브 앤 하프' : '플러스 시스템';
     document.getElementById('preset-name').innerText = `[${sysName}] ${p.name}`; 
@@ -1000,9 +1001,13 @@ function resetBalls(isRandom = false) {
     let fbReplay = document.getElementById('btnFloatReplay');
     if(fbReplay) fbReplay.disabled = true;
     
-    if(systemLabelsGroup) { scene.remove(systemLabelsGroup); systemLabelsGroup = null; }
-    document.getElementById('preset-title-display').style.display = 'none';
-    document.getElementById('presetSelect').value = ""; 
+    // ★ 버그 수정: 랜덤 배치(새 배치)일 때만 시스템 라벨과 UI를 지움
+    // 동일 배치 반복(isRandom=false)일 때는 기존 UI를 그대로 살려둠!
+    if (isRandom) {
+        if(systemLabelsGroup) { scene.remove(systemLabelsGroup); systemLabelsGroup = null; }
+        document.getElementById('preset-title-display').style.display = 'none';
+        document.getElementById('presetSelect').value = ""; 
+    }
 
     clearTrails();
     resetShotScoring();

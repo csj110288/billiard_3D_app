@@ -38,7 +38,6 @@
         #sidebarToggleBtn:hover { background: #2a2a2a; color: #f1c40f; }
         #sidebar.collapsed { transform: translateX(100%); }
 
-        /* 학습 가이드 중앙 상단 HUD */
         #preset-title-display {
             position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,0.9); border: 1px solid #3498db; border-radius: 8px;
@@ -49,7 +48,6 @@
         #preset-guide { color: #2ecc71; font-size: 14px; font-weight: bold; line-height: 1.5; }
         .preset-hint { font-size: 12px; color: #ddd; font-weight: normal; margin-top: 6px; display: block; word-break: keep-all;}
 
-        /* 플로팅 퀵 버튼 영역 */
         #floating-quick-bar {
             position: absolute; bottom: 20px; right: 20px;
             display: none; flex-wrap: wrap; justify-content: flex-end; gap: 6px; z-index: 15;
@@ -85,10 +83,10 @@
         .score-disp { font-size: 13px; font-weight: bold; text-align: center; padding: 6px; border-radius: 4px; background: #252525; border: 1px solid #444;}
 
         #cueBallWidget {
-            width: 90px; height: 90px; border-radius: 50%;
-            background: radial-gradient(circle at 35% 35%, #ffffff, #bbb, #777);
+            border-radius: 50%;
             border: 2px solid #555; position: relative; cursor: crosshair;
             margin: 4px auto; box-shadow: inset 0 2px 5px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.6);
+            transition: width 0.3s, height 0.3s;
         }
         #cueTipDot {
             width: 12px; height: 12px; border-radius: 50%;
@@ -201,9 +199,9 @@
             <div class="group">
                 <label for="systemMode">적용 시스템</label>
                 <select id="systemMode" onchange="updateSystemHUD()">
-                    <option value="fiveHalf">파이브 앤 하프 시스템</option>
-                    <option value="plus">플러스 시스템</option>
-                    <option value="ballSystem">가이드 모드 (반사각)</option>
+                    <option value="fiveHalf">3쿠션: 파이브 앤 하프 시스템</option>
+                    <option value="plus">3쿠션: 플러스 시스템</option>
+                    <option value="fourBall">4구 당구: 기본 기술 마스터</option>
                 </select>
             </div>
 
@@ -219,6 +217,16 @@
                 <div id="cueBallWidget">
                     <div id="cueTipDot"></div>
                 </div>
+            </div>
+
+            <!-- 새로 추가된 스트로크 타법 박스 -->
+            <div class="group">
+                <label for="strokeType">스트로크 타법 (Stroke Type):</label>
+                <select id="strokeType" onchange="updateAimLine()">
+                    <option value="normal">노멀 (기본 스트로크)</option>
+                    <option value="short">숏 (끊어치기 - 튕김/역회전 극대화)</option>
+                    <option value="long">롱 (밀어치기 - 관통/곡선 극대화)</option>
+                </select>
             </div>
 
             <div class="group">
@@ -295,55 +303,105 @@ let realBallStates = [];
 
 let kissOccurredInShot = false; 
 
-// ★ 실전적이고 쉬운 배치 모음 (볼퍼스트와 빈쿠션을 명확히 구분)
+// ★ 타법 파라미터(stroke)가 포함된 예제 세트
 const SYSTEM_PRESETS = {
     fiveHalf: [
-        { name: "기본 옆돌리기 (볼퍼스트)", type: "ballFirst", cue: {x: 4, z: 5}, b1: {x: -2, z: 0}, b2: {x: -10, z: -4}, pow: 15, sx: 2, sy: 1 },
-        { name: "기본 뒤돌리기 (볼퍼스트)", type: "ballFirst", cue: {x: 8, z: 2}, b1: {x: 5, z: -3}, b2: {x: -12, z: 2}, pow: 16, sx: 2, sy: -0.5 },
-        { name: "대회전 뒤돌리기 (볼퍼스트)", type: "ballFirst", cue: {x: 7, z: 5}, b1: {x: 2, z: -4}, b2: {x: -8, z: -2}, pow: 19, sx: 3, sy: 0 },
-        { name: "짧은 빗겨치기 (볼퍼스트)", type: "ballFirst", cue: {x: -5, z: 3}, b1: {x: -8, z: -1}, b2: {x: -12, z: 2}, pow: 14, sx: 2, sy: 0 },
-        { name: "파이브앤하프 뱅크샷 1", type: "bank", cue: {x: 10, z: 6}, b1: {x: -12, z: 1}, b2: {x: -10, z: -1}, baseAngle: 228, pow: 16, sx: 2, sy: 0 },
-        { name: "파이브앤하프 뱅크샷 2", type: "bank", cue: {x: 4, z: 6}, b1: {x: -12, z: 1}, b2: {x: -10, z: -1}, baseAngle: 242, pow: 15, sx: 2, sy: 0 }
+        { name: "옆돌리기 (파이브앤하프 응용)", type: "ballFirst", cue: {x: 4, z: 5}, b1: {x: -2, z: 0}, b2: {x: -10, z: -4}, pow: 16, sx: 2, sy: 1, stroke: "normal" },
+        { name: "뒤돌리기 (파이브앤하프 응용)", type: "ballFirst", cue: {x: 8, z: 2}, b1: {x: 5, z: -3}, b2: {x: -12, z: 2}, pow: 17, sx: 2, sy: -0.5, stroke: "normal" },
+        { name: "대회전 뒤돌리기", type: "ballFirst", cue: {x: 7, z: 5}, b1: {x: 2, z: -4}, b2: {x: -8, z: -2}, pow: 19, sx: 3, sy: 0, stroke: "normal" },
+        { name: "짧은 비껴치기", type: "ballFirst", cue: {x: -5, z: 3}, b1: {x: -8, z: -1}, b2: {x: -12, z: 2}, pow: 15, sx: 2, sy: 0, stroke: "short" },
+        { name: "파이브앤하프 뱅크샷 1", type: "bank", cue: {x: 10, z: 6}, b1: {x: -12, z: 1}, b2: {x: -10, z: -1}, baseAngle: 228, pow: 16, sx: 2, sy: 0, stroke: "normal" },
+        { name: "파이브앤하프 뱅크샷 2", type: "bank", cue: {x: 4, z: 6}, b1: {x: -12, z: 1}, b2: {x: -10, z: -1}, baseAngle: 242, pow: 15, sx: 2, sy: 0, stroke: "normal" }
     ],
     plus: [
-        { name: "플러스 옆돌리기 (볼퍼스트)", type: "ballFirst", cue: {x: -8, z: -2}, b1: {x: -12, z: 2}, b2: {x: 5, z: 5}, pow: 15, sx: 2, sy: 0 },
-        { name: "긴 수구 비껴치기 (볼퍼스트)", type: "ballFirst", cue: {x: -2, z: -3}, b1: {x: -8, z: 1}, b2: {x: 5, z: 5}, pow: 16, sx: 2, sy: 1 },
-        { name: "길게 세워치기 (볼퍼스트)", type: "ballFirst", cue: {x: -8, z: -1}, b1: {x: -12, z: 3}, b2: {x: 10, z: 5}, pow: 17, sx: 3, sy: -1 },
-        { name: "대회전 플러스 (볼퍼스트)", type: "ballFirst", cue: {x: -5, z: -3}, b1: {x: -11, z: 2}, b2: {x: 10, z: 5}, pow: 18, sx: 2.5, sy: 0 },
-        { name: "플러스 뱅크샷 1", type: "bank", cue: {x: -8, z: -5}, b1: {x: 5, z: 5}, b2: {x: 7, z: 3}, baseAngle: 140, pow: 16, sx: 2, sy: 0 },
-        { name: "플러스 뱅크샷 2", type: "bank", cue: {x: -2, z: -5}, b1: {x: 10, z: 5}, b2: {x: 12, z: 3}, baseAngle: 145, pow: 17, sx: 2.5, sy: 0 }
+        { name: "플러스 옆돌리기", type: "ballFirst", cue: {x: -8, z: -2}, b1: {x: -12, z: 2}, b2: {x: 5, z: 5}, pow: 16, sx: 2, sy: 0, stroke: "normal" },
+        { name: "긴 수구 비껴치기", type: "ballFirst", cue: {x: -2, z: -3}, b1: {x: -8, z: 1}, b2: {x: 5, z: 5}, pow: 16, sx: 2, sy: 1, stroke: "long" },
+        { name: "길게 세워치기", type: "ballFirst", cue: {x: -8, z: -1}, b1: {x: -12, z: 3}, b2: {x: 10, z: 5}, pow: 17, sx: 3, sy: -1, stroke: "long" },
+        { name: "대회전 플러스", type: "ballFirst", cue: {x: -5, z: -3}, b1: {x: -11, z: 2}, b2: {x: 10, z: 5}, pow: 18, sx: 2.5, sy: 0, stroke: "normal" },
+        { name: "플러스 뱅크샷 1", type: "bank", cue: {x: -8, z: -5}, b1: {x: 5, z: 5}, b2: {x: 7, z: 3}, baseAngle: 140, pow: 16, sx: 2, sy: 0, stroke: "normal" },
+        { name: "플러스 뱅크샷 2", type: "bank", cue: {x: -2, z: -5}, b1: {x: 10, z: 5}, b2: {x: 12, z: 3}, baseAngle: 145, pow: 17, sx: 2.5, sy: 0, stroke: "normal" }
+    ],
+    fourBall: [
+        // 스톱샷 (짧게 끊어치기)
+        { name: "[스톱샷] 1 (우측 직각)", type: "stop", cue: {x: 0, z: 3}, b1: {x: 0, z: -1}, b2: {x: 4, z: -1}, pow: 13, sx: 0, sy: -0.5, stroke: "short" },
+        { name: "[스톱샷] 2 (좌측 직각)", type: "stop", cue: {x: 2, z: 2}, b1: {x: -2, z: -1}, b2: {x: -5, z: 2}, pow: 13, sx: 0, sy: -0.5, stroke: "short" },
+        { name: "[스톱샷] 3 (짧은 스톱)", type: "stop", cue: {x: -6, z: -3}, b1: {x: -2, z: -3}, b2: {x: -2, z: -7}, pow: 14, sx: 0, sy: -0.5, stroke: "short" },
+        { name: "[스톱샷] 4 (비스듬 스톱)", type: "stop", cue: {x: 4, z: 3}, b1: {x: 4, z: -1}, b2: {x: 8, z: -1}, pow: 13, sx: 0, sy: -0.5, stroke: "short" },
+        { name: "[스톱샷] 5 (좁은 스톱)", type: "stop", cue: {x: 6, z: 2}, b1: {x: 3, z: 2}, b2: {x: 3, z: 5}, pow: 12, sx: 0, sy: -0.5, stroke: "short" },
+        // 밀어치기 (깊게 롱 스트로크)
+        { name: "[밀어치기] 1 (정면 관통)", type: "follow", cue: {x: -6, z: 0}, b1: {x: -2, z: 0}, b2: {x: 4, z: 0}, pow: 15, sx: 0, sy: 3, stroke: "long" },
+        { name: "[밀어치기] 2 (비스듬한 곡선)", type: "follow", cue: {x: -4, z: -3}, b1: {x: 0, z: -1}, b2: {x: 5, z: 2}, pow: 16, sx: 0, sy: 3, stroke: "long" },
+        { name: "[밀어치기] 3 (장거리 전진)", type: "follow", cue: {x: -8, z: 2}, b1: {x: 0, z: 2}, b2: {x: 7, z: 2}, pow: 18, sx: 0, sy: 3.5, stroke: "long" },
+        { name: "[밀어치기] 4 (쿠션 근처 밀기)", type: "follow", cue: {x: 8, z: -4}, b1: {x: 4, z: -4}, b2: {x: -2, z: -4}, pow: 15, sx: 0, sy: 2.5, stroke: "long" },
+        { name: "[밀어치기] 5 (대각선 곡선)", type: "follow", cue: {x: 5, z: 4}, b1: {x: 2, z: 1}, b2: {x: -3, z: -4}, pow: 17, sx: 0.5, sy: 3, stroke: "long" },
+        // 끌어치기 (짧게 끊어치기 / 멀면 롱)
+        { name: "[끌어치기] 1 (근거리 정면 숏)", type: "draw", cue: {x: 3, z: 0}, b1: {x: 7, z: 0}, b2: {x: -2, z: 0}, pow: 17, sx: 0, sy: -3, stroke: "short" },
+        { name: "[끌어치기] 2 (V자 숏 끌기)", type: "draw", cue: {x: 0, z: -2}, b1: {x: 0, z: -6}, b2: {x: 4, z: -2}, pow: 18, sx: 0, sy: -3.5, stroke: "short" },
+        { name: "[끌어치기] 3 (둔각 숏 끌기)", type: "draw", cue: {x: -4, z: 2}, b1: {x: -8, z: 2}, b2: {x: -2, z: 4}, pow: 17, sx: 0, sy: -3, stroke: "short" },
+        { name: "[끌어치기] 4 (대각 후진 롱)", type: "draw", cue: {x: 6, z: 3}, b1: {x: 9, z: 5}, b2: {x: 2, z: 0}, pow: 19, sx: 0, sy: -3.5, stroke: "long" },
+        { name: "[끌어치기] 5 (장거리 파워 롱)", type: "draw", cue: {x: -2, z: 0}, b1: {x: -8, z: 0}, b2: {x: 6, z: 0}, pow: 21, sx: 0, sy: -4, stroke: "long" },
+        // 회전 스핀
+        { name: "[회전] 1 (1쿠션 빗겨치기)", type: "spin", cue: {x: -6, z: 2}, b1: {x: -2, z: 4}, b2: {x: 4, z: 0}, pow: 15, sx: 3, sy: 1, stroke: "normal" },
+        { name: "[회전] 2 (장쿠션 횡단)", type: "spin", cue: {x: 2, z: -2}, b1: {x: 6, z: -4}, b2: {x: -2, z: -3}, pow: 16, sx: -3, sy: 0, stroke: "normal" },
+        { name: "[회전] 3 (단쿠션 반사)", type: "spin", cue: {x: 6, z: 2}, b1: {x: 10, z: 0}, b2: {x: 6, z: -3}, pow: 16, sx: 3, sy: 0, stroke: "normal" },
+        { name: "[회전] 4 (역회전 바운스)", type: "spin", cue: {x: -4, z: -2}, b1: {x: 0, z: -5}, b2: {x: -5, z: -3}, pow: 16, sx: 3, sy: -1, stroke: "normal" },
+        { name: "[회전] 5 (2쿠션 회전)", type: "spin", cue: {x: 0, z: 3}, b1: {x: -4, z: 5}, b2: {x: -8, z: -1}, pow: 17, sx: -3, sy: 1, stroke: "normal" }
     ]
 };
 
-// ★ AI 완벽 득점 탐색기 (볼퍼스트/뱅크샷 구분 및 키스 완벽 차단)
-function findPerfectAngle(preset) {
+function drawCueBallGuide() {
+    const widget = document.getElementById('cueBallWidget');
+    if (!widget) return;
+    
+    let size = (currentGameMode === '4ball') ? 96 : 90;
+    widget.style.width = size + 'px';
+    widget.style.height = size + 'px';
+
+    let c = size / 2;
+    let maxR = c - 4; 
+    let r1 = maxR * 0.33;
+    let r2 = maxR * 0.66;
+    let r3 = maxR * 0.99;
+
+    let svgStr = `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}'>
+        <circle cx='${c}' cy='${c}' r='${r1}' stroke='rgba(0,0,0,0.3)' stroke-width='0.8' fill='none'/>
+        <circle cx='${c}' cy='${c}' r='${r2}' stroke='rgba(0,0,0,0.3)' stroke-width='0.8' fill='none'/>
+        <circle cx='${c}' cy='${c}' r='${r3}' stroke='rgba(0,0,0,0.3)' stroke-width='0.8' fill='none'/>
+        <path d='M${c} 4 L${c} ${size-4} M4 ${c} L${size-4} ${c}' stroke='rgba(0,0,0,0.3)' stroke-width='0.8'/>
+    </svg>`;
+    
+    let encodedSvg = encodeURIComponent(svgStr).replace(/'/g, "%27").replace(/"/g, "%22");
+    widget.style.background = `url("data:image/svg+xml;charset=utf8,${encodedSvg}"), radial-gradient(circle at 35% 35%, #ffffff, #bbb, #777)`;
+    widget.style.backgroundRepeat = 'no-repeat';
+    widget.style.backgroundPosition = 'center';
+    widget.style.backgroundSize = 'cover';
+}
+
+function findPerfectAngle(preset, mode) {
     let baseRad = 0;
-    if (preset.type === 'ballFirst') {
-        // 볼퍼스트는 1적구를 향하는 각도를 기준으로 탐색 시작
+    if (preset.type === 'ballFirst' || mode === 'fourBall') {
         baseRad = Math.atan2(preset.b1.z - preset.cue.z, preset.b1.x - preset.cue.x) * 180 / Math.PI;
     } else {
-        baseRad = preset.baseAngle; // 뱅크샷은 제공된 기준 각도 사용
+        baseRad = preset.baseAngle; 
     }
 
     let bestAngle = baseRad;
     let minPenalty = Infinity;
 
-    // 1단계: 넓은 범위 거친 탐색 (좌우 10도 탐색 - 두께 조절)
-    for (let ang = -10; ang <= 10; ang += 0.2) {
+    for (let ang = -15; ang <= 15; ang += 0.2) {
         let testRad = (baseRad + ang) * Math.PI / 180;
-        let penalty = evalShot(testRad, preset);
+        let penalty = evalShot(testRad, preset, mode);
         if (penalty < minPenalty) {
             minPenalty = penalty;
             bestAngle = baseRad + ang;
         }
     }
 
-    // 2단계: 정답 근처 초정밀 탐색 (좌우 0.5도)
     let fineBest = bestAngle;
     let fineMin = minPenalty;
     for (let ang = -0.5; ang <= 0.5; ang += 0.02) {
         let testRad = (bestAngle + ang) * Math.PI / 180;
-        let penalty = evalShot(testRad, preset);
+        let penalty = evalShot(testRad, preset, mode);
         if (penalty < fineMin) {
             fineMin = penalty;
             fineBest = bestAngle + ang;
@@ -353,7 +411,8 @@ function findPerfectAngle(preset) {
     return { angle: (fineBest + 360) % 360, success: fineMin < 1000 };
 }
 
-function evalShot(rad, preset) {
+function evalShot(rad, preset, mode) {
+    let strokeSetting = preset.stroke || 'normal';
     let vStates = [
         { id: 0, x: preset.cue.x, z: preset.cue.z, vx: Math.cos(rad) * preset.pow * 0.08, vz: Math.sin(rad) * preset.pow * 0.08, r: tableSpec.ballR, spinX: preset.sx, spinY: preset.sy },
         { id: 1, x: preset.b1.x, z: preset.b1.z, vx: 0, vz: 0, r: tableSpec.ballR },
@@ -367,8 +426,7 @@ function evalShot(rad, preset) {
     let kissOccurred = false;
     let validScore = false;
     let minDistToRemaining = Infinity;
-    
-    let firstHitType = null; // 'ball' or 'cushion'을 기록하여 꼼수 방지
+    let firstHitType = null; 
 
     const wB = tableSpec.width / 2 - tableSpec.ballR;
     const hB = tableSpec.height / 2 - tableSpec.ballR;
@@ -397,20 +455,19 @@ function evalShot(rad, preset) {
                     if (dist < minDist) {
                         if (dist === 0) { dx = 0.001; dz = 0; dist = 0.001; }
 
-                        // 목적구끼리의 충돌 (키스) 감지
                         if (b1.id !== 0 && b2.id !== 0) {
                             kissOccurred = true;
                         } 
-                        // 흰 공이 목적구를 타격
                         else if (b1.id === 0 || b2.id === 0) {
-                            if (firstHitType === null) firstHitType = 'ball'; // 첫 타격이 공임을 기록
+                            if (firstHitType === null) firstHitType = 'ball'; 
                             
                             let targetId = (b1.id === 0) ? b2.id : b1.id;
                             if (targetId === 1 && !hitTarget1) { hitTarget1 = true; hitTargetCount++; }
                             if (targetId === 2 && !hitTarget2) { hitTarget2 = true; hitTargetCount++; }
                             
                             if (hitTargetCount === 2 && !validScore) {
-                                if (cushionHits >= 3 && !kissOccurred) validScore = true;
+                                if (mode === 'fourBall') validScore = true;
+                                else if (cushionHits >= 3 && !kissOccurred) validScore = true;
                             }
                         }
 
@@ -422,7 +479,20 @@ function evalShot(rad, preset) {
                         let vz2 = b2.vz * cos - b2.vx * sin;
 
                         let newVx1 = vx2, newVz1 = vz1, newVx2 = vx1, newVz2 = vz2;
-                        if (b1.id === 0 && b1.spinY !== undefined) newVx1 += b1.spinY * 0.12 * Math.abs(vx1);
+                        
+                        // ★ 스트로크 타법 물리 공식 반영 (끊어치기 vs 밀어치기)
+                        if (b1.id === 0 && b1.spinY !== undefined) {
+                            let strokeMult = 0.12;
+                            if (strokeSetting === 'short') {
+                                strokeMult = 0.18; // 끊어치기: 역회전 강하게
+                                newVx1 *= 0.5;     // 직진 에너지 50% 소멸
+                            } else if (strokeSetting === 'long') {
+                                strokeMult = 0.09; 
+                                newVx1 = vx2 * 0.7 + vx1 * 0.3; // 밀어치기: 내 에너지 30% 유지 (관통)
+                            }
+                            let followImpulse = b1.spinY * strokeMult * Math.abs(vx1);
+                            newVx1 += followImpulse;
+                        }
 
                         b1.vx = newVx1 * cos - newVz1 * sin;
                         b1.vz = newVz1 * cos + newVx1 * sin;
@@ -446,19 +516,18 @@ function evalShot(rad, preset) {
                 else if (b.z < -hB) { b.z = -hB; if (b.vz < 0) { b.vz = -b.vz * tableSpec.cushionElasticity; hitCushion = true; dirZ = 1; } }
 
                 if (hitCushion && b.id === 0) {
-                    if (firstHitType === null) firstHitType = 'cushion'; // 첫 타격이 쿠션임을 기록
-                    
-                    if (hitTargetCount < 2) cushionHits++; // 2적구를 맞추기 전까지만 쿠션 수 카운트
+                    if (firstHitType === null) firstHitType = 'cushion'; 
+                    if (hitTargetCount < 2) cushionHits++; 
                     
                     if (b.spinX !== undefined) {
                         let spinEffect = b.spinX * 0.06;
                         if (dirX !== 0) b.vz += dirX * spinEffect * Math.abs(b.vx);
-                        else if (dirZ !== 0) b.vx -= dirZ * spinEffect * Math.abs(b.vz);
+                        else if (dirZ !== 0) b.vz -= dirZ * spinEffect * Math.abs(b.vz);
                     }
                 }
             });
         }
-        if (validScore) break; // 완벽한 득점 경로 시 즉시 종료
+        if (validScore) break; 
 
         let target = null;
         if (!hitTarget1) target = vStates[1];
@@ -471,14 +540,14 @@ function evalShot(rad, preset) {
 
     let penalty = 0;
     
-    // ★ 강제 규칙: 뱅크샷 예제인데 공부터 맞추거나, 볼퍼스트 예제인데 빈쿠션부터 맞추면 오답 처리!
     if (preset.type === 'ballFirst' && firstHitType === 'cushion') penalty += 20000;
     if (preset.type === 'bank' && firstHitType === 'ball') penalty += 20000;
     
-    if (kissOccurred) penalty += 10000; // 키스 발생 절대 회피
+    if (kissOccurred) penalty += 10000; 
     if (!hitTarget1 && !hitTarget2) penalty += 3000 + minDistToRemaining;
     else if (!hitTarget1 || !hitTarget2) penalty += 1000 + minDistToRemaining;
-    if (cushionHits < 3) penalty += 500 * (3 - cushionHits);
+    
+    if (mode !== 'fourBall' && cushionHits < 3) penalty += 500 * (3 - cushionHits);
 
     return penalty;
 }
@@ -579,13 +648,23 @@ function loadSelectedPreset() {
     const p = presets[idx];
     if (!p) return;
 
-    // 대기 UI 표시
+    if (mode === 'fourBall' && currentGameMode !== '4ball') {
+        document.getElementById('gameMode').value = '4ball';
+        changeGameMode();
+    } else if (mode !== 'fourBall' && currentGameMode === '4ball') {
+        document.getElementById('gameMode').value = '3ball';
+        changeGameMode();
+    }
+
     document.getElementById('preset-title-display').style.display = 'block';
-    let sysName = (mode === 'fiveHalf') ? '파이브 앤 하프' : '플러스 시스템';
+    let sysName = "";
+    if (mode === 'fiveHalf') sysName = '파이브 앤 하프';
+    else if (mode === 'plus') sysName = '플러스 시스템';
+    else if (mode === 'fourBall') sysName = '4구 당구 기술';
+
     document.getElementById('preset-name').innerText = `[${sysName}] ${p.name}`; 
-    document.getElementById('preset-guide').innerHTML = `⏳ <b>AI가 완벽한 3쿠션 득점 경로를 탐색 중입니다...</b>`;
+    document.getElementById('preset-guide').innerHTML = `⏳ <b>AI가 완벽한 정답 궤적을 탐색 중입니다...</b>`;
     
-    // UI 업데이트가 화면에 반영될 수 있도록 짧은 딜레이 후 AI 연산 시작
     setTimeout(() => {
         cueBall.position.set(p.cue.x, tableSpec.ballR, p.cue.z);
         objectBall1.position.set(p.b1.x, tableSpec.ballR, p.b1.z);
@@ -593,13 +672,13 @@ function loadSelectedPreset() {
 
         savedBallPositions = balls.map(b => ({ x: b.position.x, z: b.position.z }));
 
-        // ★ 백그라운드 AI 탐색기 가동 (볼퍼스트/뱅크샷 구분)
-        let aiResult = findPerfectAngle(p);
+        let aiResult = findPerfectAngle(p, mode);
 
         document.getElementById('aimAngle').value = aiResult.angle.toFixed(1);
         document.getElementById('power').value = p.pow;
         document.getElementById('spinX').value = p.sx;
         document.getElementById('spinY').value = p.sy;
+        document.getElementById('strokeType').value = p.stroke || 'normal';
 
         updateAngleLabel(aiResult.angle.toFixed(1));
         updatePowerLabel(p.pow);
@@ -610,29 +689,30 @@ function loadSelectedPreset() {
         syncRealStatesFromMeshes();
         updateAimLine();
 
-        // ★ 실전 당구 시계방향 당점 텍스트 변환 로직
         let clock = "";
-        if (p.sx == 0 && p.sy == 0) clock = "무회전(정중앙)";
+        if (p.sx == 0 && p.sy == 0) clock = "정중앙";
         else if (p.sx == 0 && p.sy > 0) clock = "12시 방향";
-        else if (p.sx > 0 && p.sy > 0) clock = "1~2시 방향";
+        else if (p.sx > 0 && p.sy > 0) clock = "1시~2시 방향";
         else if (p.sx > 0 && p.sy == 0) clock = "3시 방향";
-        else if (p.sx > 0 && p.sy < 0) clock = "4~5시 방향";
+        else if (p.sx > 0 && p.sy < 0) clock = "4시~5시 방향";
         else if (p.sx == 0 && p.sy < 0) clock = "6시 방향";
-        else if (p.sx < 0 && p.sy < 0) clock = "7~8시 방향";
+        else if (p.sx < 0 && p.sy < 0) clock = "7시~8시 방향";
         else if (p.sx < 0 && p.sy == 0) clock = "9시 방향";
-        else if (p.sx < 0 && p.sy > 0) clock = "10~11시 방향";
+        else if (p.sx < 0 && p.sy > 0) clock = "10시~11시 방향";
 
         let tipVal = Math.max(Math.abs(p.sx), Math.abs(p.sy));
         let tipStr = (tipVal > 0) ? `${clock} ${tipVal}팁` : clock;
         
+        let strokeName = (p.stroke === 'short') ? "숏(끊어치기)" : (p.stroke === 'long' ? "롱(밀어치기)" : "노멀(기본)");
+
         if (aiResult.success) {
             document.getElementById('preset-guide').innerHTML = 
-                `💡 <b>모범 답안 세팅 완료:</b> 당점 [${tipStr}], 파워 [${p.pow}m/s]<br>` +
-                `<span class="preset-hint">🎯 <b>(흰 공이 3쿠션을 거쳐 완벽히 득점하도록 조준되었습니다. 샷 실행을 누르세요!)</b></span>`;
+                `💡 <b>모범 답안 세팅:</b> 당점 [${tipStr}], 파워 [${p.pow}m/s], 타법 [${strokeName}]<br>` +
+                `<span class="preset-hint">🎯 <b>(시뮬레이터가 완벽한 득점 궤적을 자동으로 세팅했습니다. 샷 실행을 누르세요!)</b></span>`;
         } else {
             document.getElementById('preset-guide').innerHTML = 
-                `💡 <b>모범 답안 안내:</b> 당점 [${tipStr}], 파워 [${p.pow}m/s]<br>` +
-                `<span class="preset-hint" style="color:#e74c3c;">⚠️ <b>(최적 궤적을 찾는 중입니다. 버튼으로 미세 조정을 해보세요!)</b></span>`;
+                `💡 <b>모범 답안 안내:</b> 당점 [${tipStr}], 파워 [${p.pow}m/s], 타법 [${strokeName}]<br>` +
+                `<span class="preset-hint" style="color:#e74c3c;">⚠️ <b>(최적 궤적을 찾는 중입니다. 십자 버튼으로 미세 조정을 해보세요!)</b></span>`;
         }
 
         drawSystemLabels(mode);
@@ -809,7 +889,8 @@ function updateScoringHUD() {
     scoreEl.style.color = color;
 }
 
-function stepPhysicsState(states, spec, subSteps, events = null) {
+// ★ 스트로크 타법이 반영된 3D 물리 엔진 스텝 함수
+function stepPhysicsState(states, spec, subSteps, events = null, stroke = 'normal') {
     let isMoving = false;
 
     for (let step = 0; step < subSteps; step++) {
@@ -860,8 +941,19 @@ function stepPhysicsState(states, spec, subSteps, events = null) {
                     let newVx2 = vx1;
                     let newVz2 = vz2;
 
+                    // ★ 스트로크 타법 물리 공식 반영 (수구와 목적구 충돌 시)
                     if (b1.id === 0 && b1.spinY !== undefined) {
-                        let followImpulse = b1.spinY * 0.12 * Math.abs(vx1);
+                        let strokeMult = 0.12; // 기본 (normal)
+                        
+                        if (stroke === 'short') {
+                            strokeMult = 0.18; // 끊어치기: 역회전 강하게 파고듦
+                            newVx1 *= 0.5;     // 수구가 1적구를 치고 앞으로 밀리려는 힘을 50% 억제
+                        } else if (stroke === 'long') {
+                            strokeMult = 0.09; // 밀어치기: 순간 반발력은 줄이고
+                            newVx1 = vx2 * 0.7 + vx1 * 0.3; // 수구의 원래 직진 에너지를 30% 살려 관통 효과 연출
+                        }
+                        
+                        let followImpulse = b1.spinY * strokeMult * Math.abs(vx1);
                         newVx1 += followImpulse;
                     }
 
@@ -986,6 +1078,7 @@ function init3D() {
 
     window.addEventListener('resize', onWindowResize);
     
+    drawCueBallGuide();
     setup2DCueBallWidget();
     
     updatePowerLabel(document.getElementById('power').value);
@@ -1196,7 +1289,12 @@ function resetBalls(isRandom = false) {
 
     if (isRandom || savedBallPositions.length !== balls.length) {
         savedBallPositions = [];
-        balls.forEach(() => {
+        balls.forEach((b, idx) => {
+            if (currentGameMode === '4ball' && idx === 3) {
+                savedBallPositions.push({ x: minX + Math.random()*3, z: minZ + Math.random()*3 });
+                return;
+            }
+            
             let posX, posZ, valid;
             let attempts = 0;
             do {
@@ -1242,6 +1340,7 @@ function changeGameMode() {
 
     buildTable();
     createBalls();
+    drawCueBallGuide();
     resetShotScoring();
 }
 
@@ -1297,19 +1396,18 @@ function updateAimLine() {
     runVirtualTrajectory(rad);
 }
 
+// 실시간 득점 예측 가상 궤적 계산
 function runVirtualTrajectory(rad) {
     if (!balls || balls.length === 0 || !cueBall) return;
 
-    const wB = tableSpec.width / 2 - tableSpec.ballR;
-    const hB = tableSpec.height / 2 - tableSpec.ballR;
-
     const spinX = parseFloat(document.getElementById('spinX').value);
     const spinY = parseFloat(document.getElementById('spinY').value);
+    const currentStroke = document.getElementById('strokeType').value;
 
     let vStates = balls.map((b, idx) => ({
         id: idx,
-        x: Math.max(-wB, Math.min(wB, b.position.x)),
-        z: Math.max(-hB, Math.min(hB, b.position.z)),
+        x: Math.max(-(tableSpec.width / 2 - tableSpec.ballR), Math.min((tableSpec.width / 2 - tableSpec.ballR), b.position.x)),
+        z: Math.max(-(tableSpec.height / 2 - tableSpec.ballR), Math.min((tableSpec.height / 2 - tableSpec.ballR), b.position.z)),
         vx: 0,
         vz: 0,
         r: tableSpec.ballR,
@@ -1332,12 +1430,42 @@ function runVirtualTrajectory(rad) {
     const SUB_STEPS = 10;
     const SIM_FRAMES = 250;
 
+    let virtCushionHits = 0;
+    let virtHitTargets = [];
+    let virtKiss = false;
+    let virtValidScore = false;
+
     for (let frame = 0; frame < SIM_FRAMES; frame++) {
         let virtEvents = [];
-        let isMoving = stepPhysicsState(vStates, tableSpec, SUB_STEPS, virtEvents);
+        // 가상 궤적 계산 시에도 현재 선택된 스트로크(stroke) 타법을 전달!
+        let isMoving = stepPhysicsState(vStates, tableSpec, SUB_STEPS, virtEvents, currentStroke);
 
         for (let ev of virtEvents) {
-            if (ev.type === 'ball') {
+            if (ev.type === 'cushion') {
+                if (ev.ball.id === 0 && virtHitTargets.length < 2) {
+                    virtCushionHits++;
+                }
+            } else if (ev.type === 'ball') {
+                if (ev.b1.id !== 0 && ev.b2.id !== 0) {
+                    if (virtHitTargets.length < 2) virtKiss = true;
+                } else if (ev.b1.id === 0 || ev.b2.id === 0) {
+                    let targetId = (ev.b1.id === 0) ? ev.b2.id : ev.b1.id;
+                    
+                    if (currentGameMode === '4ball' && targetId === 3) {
+                        virtKiss = true; 
+                    } else if (!virtHitTargets.includes(targetId)) {
+                        virtHitTargets.push(targetId);
+                        if (currentGameMode === '3ball') {
+                            if (virtHitTargets.length === 2 && virtCushionHits >= 3 && !virtKiss) {
+                                virtValidScore = true;
+                            }
+                        } else if (currentGameMode === '4ball') {
+                            if (virtHitTargets.length === 2 && !virtKiss) {
+                                virtValidScore = true;
+                            }
+                        }
+                    }
+                }
                 ballMoved[ev.b1.id] = true;
                 ballMoved[ev.b2.id] = true;
             }
@@ -1380,6 +1508,24 @@ function runVirtualTrajectory(rad) {
         theoryLine.geometry.setFromPoints(ballPaths[0]);
         if (theoryLine.computeLineDistances) theoryLine.computeLineDistances();
         theoryLine.visible = true;
+    }
+
+    // UI 예측 결과 패널 반영
+    const scoreEl = document.getElementById('scoreDisp');
+    if (scoreEl && !isSimulating && !isReplaying) {
+        if (virtValidScore) {
+            let cStr = (currentGameMode === '3ball') ? `(${virtCushionHits}쿠션 성공)` : `(성공)`;
+            scoreEl.innerText = `✨ 득점 예상 궤적! ${cStr}`;
+            scoreEl.style.color = "#3498db"; 
+        } else {
+            let failReason = "목적구 미타격";
+            if (virtKiss) failReason = "키스 발생 위험";
+            else if (virtHitTargets.length === 2 && currentGameMode === '3ball' && virtCushionHits < 3) failReason = `3쿠션 부족 (현재 ${virtCushionHits}쿠션)`;
+            else if (virtHitTargets.length === 1) failReason = "1적구만 타격";
+            
+            scoreEl.innerText = `🤔 득점 실패 예상 (${failReason})`;
+            scoreEl.style.color = "#e67e22";
+        }
     }
 }
 
@@ -1592,8 +1738,10 @@ function updatePhysics() {
 
     const SUB_STEPS = 10;
     let realEvents = [];
-
-    let isMoving = stepPhysicsState(realBallStates, tableSpec, SUB_STEPS, realEvents);
+    
+    // ★ 실제 샷을 칠 때도 현재 선택된 스트로크(stroke) 타법을 전달합니다.
+    const currentStroke = document.getElementById('strokeType').value;
+    let isMoving = stepPhysicsState(realBallStates, tableSpec, SUB_STEPS, realEvents, currentStroke);
 
     realBallStates.forEach((st, idx) => {
         let b = balls[idx];
@@ -1609,7 +1757,6 @@ function updatePhysics() {
         if (ev.type === 'cushion') {
             playCollisionSound(ev.speed, true);
             if (ev.ball.id === 0) {
-                // 흰 공이 아직 두 목적구를 모두 맞추지 않았을 때만 쿠션을 카운트
                 if (hitObjects.length < 2) {
                     cushionHitCount++;
                 }
@@ -1618,37 +1765,40 @@ function updatePhysics() {
         } else if (ev.type === 'ball') {
             playCollisionSound(ev.speed, false);
             
-            // ★ 실시간 키스(목적구끼리 충돌) 감지하여 득점 취소 적용
             if (ev.b1.id !== 0 && ev.b2.id !== 0) {
                 if (hitObjects.length < 2) {
                     kissOccurredInShot = true;
                 }
             } 
-            // 흰 공이 목적구를 맞췄을 때
             else if (ev.b1.id === 0 || ev.b2.id === 0) {
                 let targetId = (ev.b1.id === 0) ? ev.b2.id : ev.b1.id;
-                let targetMesh = balls[targetId];
-                if (targetMesh && !hitObjects.includes(targetMesh)) {
-                    hitObjects.push(targetMesh);
-                    
-                    if (currentGameMode === '3ball') {
-                        if (hitObjects.length === 2) {
-                            if (cushionHitCount >= 3 && !kissOccurredInShot && scoreStatus !== "SUCCESS") {
+                
+                if (currentGameMode === '4ball' && targetId === 3) {
+                    kissOccurredInShot = true;
+                } else {
+                    let targetMesh = balls[targetId];
+                    if (targetMesh && !hitObjects.includes(targetMesh)) {
+                        hitObjects.push(targetMesh);
+                        
+                        if (currentGameMode === '3ball') {
+                            if (hitObjects.length === 2) {
+                                if (cushionHitCount >= 3 && !kissOccurredInShot && scoreStatus !== "SUCCESS") {
+                                    scoreStatus = "SUCCESS";
+                                    scoredCushionCount = cushionHitCount;
+                                } else {
+                                    scoreStatus = "FAIL";
+                                }
+                            }
+                        } else if (currentGameMode === '4ball') {
+                            if (hitObjects.length === 2 && !kissOccurredInShot && scoreStatus !== "SUCCESS") {
                                 scoreStatus = "SUCCESS";
                                 scoredCushionCount = cushionHitCount;
-                            } else {
+                            } else if (hitObjects.length === 2 && kissOccurredInShot) {
                                 scoreStatus = "FAIL";
                             }
                         }
-                    } else if (currentGameMode === '4ball') {
-                        if (hitObjects.length === 2 && !kissOccurredInShot && scoreStatus !== "SUCCESS") {
-                            scoreStatus = "SUCCESS";
-                            scoredCushionCount = cushionHitCount;
-                        } else if (hitObjects.length === 2 && kissOccurredInShot) {
-                            scoreStatus = "FAIL";
-                        }
+                        updateScoringHUD();
                     }
-                    updateScoringHUD();
                 }
             }
         }
@@ -1725,8 +1875,9 @@ function clearTrails() {
 function updateSystemHUD() {
     const mode = document.getElementById('systemMode').value;
     const t = document.getElementById('sysTitle'), f = document.getElementById('sysFormula');
-    if (mode === 'fiveHalf') { t.innerText = "파이브 앤 하프 시스템"; f.innerHTML = '공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span>'; }
-    else if (mode === 'plus') { t.innerText = "플러스 시스템"; f.innerHTML = '공식: <span class="formula">1쿠션 = 수구 수 + 3쿠션 수</span>'; }
+    if (mode === 'fiveHalf') { t.innerText = "3쿠션: 파이브 앤 하프 시스템"; f.innerHTML = '공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span>'; }
+    else if (mode === 'plus') { t.innerText = "3쿠션: 플러스 시스템"; f.innerHTML = '공식: <span class="formula">1쿠션 = 수구 수 + 3쿠션 수</span>'; }
+    else if (mode === 'fourBall') { t.innerText = "4구 당구 기본 기술 연습"; f.innerHTML = '목표: <span class="formula">빨간 공 2개를 모두 타격 (키스 주의)</span>'; }
     else { t.innerText = "기본 가이드 모드"; f.innerHTML = '공식: <span class="formula">입사각 = 반사각</span>'; }
     
     populatePresetSelect();

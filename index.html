@@ -294,7 +294,6 @@ let pointerStartX = 0; let pointerStartY = 0;
 let audioCtx = null;
 let realBallStates = [];
 
-// ★ 자동 득점 경로 계산 로직을 제거하고, 1쿠션 지점을 올바르게 바라보도록 하드코딩된 완벽한 모범 각도(angle)를 직접 제공합니다.
 const SYSTEM_PRESETS = {
     fiveHalf: [
         { name: "50 - 30 = 20 [뒤돌리기]", cue: {x: 8, z: 2}, b1: {x: 5, z: -3}, b2: {x: -12, z: 2}, angle: 236.5, pow: 16, sx: 2, sy: 0 },
@@ -424,7 +423,6 @@ function loadSelectedPreset() {
 
     savedBallPositions = balls.map(b => ({ x: b.position.x, z: b.position.z }));
 
-    // 직접 하드코딩된 완벽한 모범 각도 세팅
     document.getElementById('aimAngle').value = p.angle.toFixed(1);
     document.getElementById('power').value = p.pow;
     document.getElementById('spinX').value = p.sx;
@@ -591,8 +589,8 @@ function updateScoringHUD() {
     let text = "";
     let color = "#888";
 
-    if (isSimulating) {
-        text = `${(currentGameMode === '3ball') ? '3쿠션' : '4구'} 진행 중 | 쿠션: ${cushionHitCount}회 | 맞은공: ${hitObjects.length}/2`;
+    if (isSimulating && scoreStatus === "NONE") {
+        text = `${(currentGameMode === '3ball') ? '3쿠션' : '4구'} 진행 중 | 유효 쿠션: ${cushionHitCount}회 | 맞은공: ${hitObjects.length}/2`;
         color = "#f1c40f";
     } else if (scoreStatus === "SUCCESS") {
         if (currentGameMode === '3ball') {
@@ -602,25 +600,18 @@ function updateScoringHUD() {
             text = `🎯 득점 성공! (${cushionStr})`;
         }
         color = "#2ecc71";
-    } else if (scoreStatus === "FAIL") {
+    } else {
         let failReason = "";
         if (hitObjects.length === 2) {
             let cStr = (cushionHitCount === 0) ? "직접" : `${cushionHitCount}쿠션`;
-            failReason = ` (${cStr} - 3쿠션 미달)`;
+            failReason = ` (${cStr} 맞고 2적구 타격 - 3쿠션 미달)`;
         } else if (hitObjects.length === 1) {
-            failReason = ` (1적구만 타격 / 쿠션: ${cushionHitCount}회)`;
+            failReason = ` (1적구만 타격 / 유효 쿠션: ${cushionHitCount}회)`;
         } else {
-            failReason = ` (목적구 미타격 / 쿠션: ${cushionHitCount}회)`;
+            failReason = ` (목적구 미타격 / 유효 쿠션: ${cushionHitCount}회)`;
         }
         text = `❌ 득점 실패${failReason}`;
         color = "#e74c3c";
-    } else {
-        if (currentGameMode === '3ball') {
-            text = "3쿠션 대기 중 (3쿠션 이상 + 2목적구 타격)";
-        } else if (currentGameMode === '4ball') {
-            text = "4구 대기 중 (2목적구 타격)";
-        }
-        color = "#888";
     }
 
     scoreEl.innerText = text;
@@ -1427,7 +1418,10 @@ function updatePhysics() {
         if (ev.type === 'cushion') {
             playCollisionSound(ev.speed, true);
             if (ev.ball.id === 0) {
-                cushionHitCount++;
+                // ★ 핵심 수정: 수구가 2적구를 맞추기 전까지만 쿠션 수를 셉니다.
+                if (hitObjects.length < 2) {
+                    cushionHitCount++;
+                }
                 updateScoringHUD();
             }
         } else if (ev.type === 'ball') {
@@ -1439,9 +1433,14 @@ function updatePhysics() {
                     hitObjects.push(targetMesh);
                     
                     if (currentGameMode === '3ball') {
-                        if (hitObjects.length === 2 && cushionHitCount >= 3 && scoreStatus !== "SUCCESS") {
-                            scoreStatus = "SUCCESS";
-                            scoredCushionCount = cushionHitCount;
+                        if (hitObjects.length === 2) {
+                            if (cushionHitCount >= 3 && scoreStatus !== "SUCCESS") {
+                                scoreStatus = "SUCCESS";
+                                scoredCushionCount = cushionHitCount;
+                            } else {
+                                // ★ 쿠션 횟수가 부족한 상태에서 2적구를 맞추면 즉시 실패 처리!
+                                scoreStatus = "FAIL";
+                            }
                         }
                     } else if (currentGameMode === '4ball') {
                         if (hitObjects.length === 2 && scoreStatus !== "SUCCESS") {

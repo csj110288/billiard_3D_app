@@ -219,7 +219,6 @@
                 </div>
             </div>
 
-            <!-- 새로 추가된 스트로크 타법 박스 -->
             <div class="group">
                 <label for="strokeType">스트로크 타법 (Stroke Type):</label>
                 <select id="strokeType" onchange="updateAimLine()">
@@ -303,7 +302,6 @@ let realBallStates = [];
 
 let kissOccurredInShot = false; 
 
-// ★ 타법 파라미터(stroke)가 포함된 예제 세트
 const SYSTEM_PRESETS = {
     fiveHalf: [
         { name: "옆돌리기 (파이브앤하프 응용)", type: "ballFirst", cue: {x: 4, z: 5}, b1: {x: -2, z: 0}, b2: {x: -10, z: -4}, pow: 16, sx: 2, sy: 1, stroke: "normal" },
@@ -322,25 +320,21 @@ const SYSTEM_PRESETS = {
         { name: "플러스 뱅크샷 2", type: "bank", cue: {x: -2, z: -5}, b1: {x: 10, z: 5}, b2: {x: 12, z: 3}, baseAngle: 145, pow: 17, sx: 2.5, sy: 0, stroke: "normal" }
     ],
     fourBall: [
-        // 스톱샷 (짧게 끊어치기)
         { name: "[스톱샷] 1 (우측 직각)", type: "stop", cue: {x: 0, z: 3}, b1: {x: 0, z: -1}, b2: {x: 4, z: -1}, pow: 13, sx: 0, sy: -0.5, stroke: "short" },
         { name: "[스톱샷] 2 (좌측 직각)", type: "stop", cue: {x: 2, z: 2}, b1: {x: -2, z: -1}, b2: {x: -5, z: 2}, pow: 13, sx: 0, sy: -0.5, stroke: "short" },
         { name: "[스톱샷] 3 (짧은 스톱)", type: "stop", cue: {x: -6, z: -3}, b1: {x: -2, z: -3}, b2: {x: -2, z: -7}, pow: 14, sx: 0, sy: -0.5, stroke: "short" },
         { name: "[스톱샷] 4 (비스듬 스톱)", type: "stop", cue: {x: 4, z: 3}, b1: {x: 4, z: -1}, b2: {x: 8, z: -1}, pow: 13, sx: 0, sy: -0.5, stroke: "short" },
         { name: "[스톱샷] 5 (좁은 스톱)", type: "stop", cue: {x: 6, z: 2}, b1: {x: 3, z: 2}, b2: {x: 3, z: 5}, pow: 12, sx: 0, sy: -0.5, stroke: "short" },
-        // 밀어치기 (깊게 롱 스트로크)
         { name: "[밀어치기] 1 (정면 관통)", type: "follow", cue: {x: -6, z: 0}, b1: {x: -2, z: 0}, b2: {x: 4, z: 0}, pow: 15, sx: 0, sy: 3, stroke: "long" },
         { name: "[밀어치기] 2 (비스듬한 곡선)", type: "follow", cue: {x: -4, z: -3}, b1: {x: 0, z: -1}, b2: {x: 5, z: 2}, pow: 16, sx: 0, sy: 3, stroke: "long" },
         { name: "[밀어치기] 3 (장거리 전진)", type: "follow", cue: {x: -8, z: 2}, b1: {x: 0, z: 2}, b2: {x: 7, z: 2}, pow: 18, sx: 0, sy: 3.5, stroke: "long" },
         { name: "[밀어치기] 4 (쿠션 근처 밀기)", type: "follow", cue: {x: 8, z: -4}, b1: {x: 4, z: -4}, b2: {x: -2, z: -4}, pow: 15, sx: 0, sy: 2.5, stroke: "long" },
         { name: "[밀어치기] 5 (대각선 곡선)", type: "follow", cue: {x: 5, z: 4}, b1: {x: 2, z: 1}, b2: {x: -3, z: -4}, pow: 17, sx: 0.5, sy: 3, stroke: "long" },
-        // 끌어치기 (짧게 끊어치기 / 멀면 롱)
         { name: "[끌어치기] 1 (근거리 정면 숏)", type: "draw", cue: {x: 3, z: 0}, b1: {x: 7, z: 0}, b2: {x: -2, z: 0}, pow: 17, sx: 0, sy: -3, stroke: "short" },
         { name: "[끌어치기] 2 (V자 숏 끌기)", type: "draw", cue: {x: 0, z: -2}, b1: {x: 0, z: -6}, b2: {x: 4, z: -2}, pow: 18, sx: 0, sy: -3.5, stroke: "short" },
         { name: "[끌어치기] 3 (둔각 숏 끌기)", type: "draw", cue: {x: -4, z: 2}, b1: {x: -8, z: 2}, b2: {x: -2, z: 4}, pow: 17, sx: 0, sy: -3, stroke: "short" },
         { name: "[끌어치기] 4 (대각 후진 롱)", type: "draw", cue: {x: 6, z: 3}, b1: {x: 9, z: 5}, b2: {x: 2, z: 0}, pow: 19, sx: 0, sy: -3.5, stroke: "long" },
         { name: "[끌어치기] 5 (장거리 파워 롱)", type: "draw", cue: {x: -2, z: 0}, b1: {x: -8, z: 0}, b2: {x: 6, z: 0}, pow: 21, sx: 0, sy: -4, stroke: "long" },
-        // 회전 스핀
         { name: "[회전] 1 (1쿠션 빗겨치기)", type: "spin", cue: {x: -6, z: 2}, b1: {x: -2, z: 4}, b2: {x: 4, z: 0}, pow: 15, sx: 3, sy: 1, stroke: "normal" },
         { name: "[회전] 2 (장쿠션 횡단)", type: "spin", cue: {x: 2, z: -2}, b1: {x: 6, z: -4}, b2: {x: -2, z: -3}, pow: 16, sx: -3, sy: 0, stroke: "normal" },
         { name: "[회전] 3 (단쿠션 반사)", type: "spin", cue: {x: 6, z: 2}, b1: {x: 10, z: 0}, b2: {x: 6, z: -3}, pow: 16, sx: 3, sy: 0, stroke: "normal" },
@@ -476,19 +470,18 @@ function evalShot(rad, preset, mode) {
                         let vx1 = b1.vx * cos + b1.vz * sin;
                         let vz1 = b1.vz * cos - b1.vx * sin;
                         let vx2 = b2.vx * cos + b2.vz * sin;
-                        let vz2 = b2.vz * cos - b2.vx * sin;
+                        let vz2 = b2.vx * cos - b2.vx * sin;
 
                         let newVx1 = vx2, newVz1 = vz1, newVx2 = vx1, newVz2 = vz2;
                         
-                        // ★ 스트로크 타법 물리 공식 반영 (끊어치기 vs 밀어치기)
                         if (b1.id === 0 && b1.spinY !== undefined) {
                             let strokeMult = 0.12;
                             if (strokeSetting === 'short') {
-                                strokeMult = 0.18; // 끊어치기: 역회전 강하게
-                                newVx1 *= 0.5;     // 직진 에너지 50% 소멸
+                                strokeMult = 0.18; 
+                                newVx1 *= 0.5;     
                             } else if (strokeSetting === 'long') {
                                 strokeMult = 0.09; 
-                                newVx1 = vx2 * 0.7 + vx1 * 0.3; // 밀어치기: 내 에너지 30% 유지 (관통)
+                                newVx1 = vx2 * 0.7 + vx1 * 0.3; 
                             }
                             let followImpulse = b1.spinY * strokeMult * Math.abs(vx1);
                             newVx1 += followImpulse;
@@ -510,19 +503,33 @@ function evalShot(rad, preset, mode) {
 
             vStates.forEach(b => {
                 let hitCushion = false, dirX = 0, dirZ = 0;
-                if (b.x > wB) { b.x = wB; if (b.vx > 0) { b.vx = -b.vx * tableSpec.cushionElasticity; hitCushion = true; dirX = -1; } }
-                else if (b.x < -wB) { b.x = -wB; if (b.vx < 0) { b.vx = -b.vx * tableSpec.cushionElasticity; hitCushion = true; dirX = 1; } }
-                if (b.z > hB) { b.z = hB; if (b.vz > 0) { b.vz = -b.vz * tableSpec.cushionElasticity; hitCushion = true; dirZ = -1; } }
-                else if (b.z < -hB) { b.z = -hB; if (b.vz < 0) { b.vz = -b.vz * tableSpec.cushionElasticity; hitCushion = true; dirZ = 1; } }
+                let currentElasticity = tableSpec.cushionElasticity;
+                let currentSpinMult = 0.06;
+
+                // ★ 스트로크에 따른 쿠션 반발력/회전량 모듈식 통합 적용
+                if (b.id === 0) {
+                    if (strokeSetting === 'short') {
+                        currentElasticity *= 0.9;
+                        currentSpinMult = 0.09;
+                    } else if (strokeSetting === 'long') {
+                        currentElasticity *= 1.05;
+                        currentSpinMult = 0.04;
+                    }
+                }
+
+                if (b.x > wB) { b.x = wB; if (b.vx > 0) { b.vx = -b.vx * currentElasticity; hitCushion = true; dirX = -1; } }
+                else if (b.x < -wB) { b.x = -wB; if (b.vx < 0) { b.vx = -b.vx * currentElasticity; hitCushion = true; dirX = 1; } }
+                if (b.z > hB) { b.z = hB; if (b.vz > 0) { b.vz = -b.vz * currentElasticity; hitCushion = true; dirZ = -1; } }
+                else if (b.z < -hB) { b.z = -hB; if (b.vz < 0) { b.vz = -b.vz * currentElasticity; hitCushion = true; dirZ = 1; } }
 
                 if (hitCushion && b.id === 0) {
                     if (firstHitType === null) firstHitType = 'cushion'; 
                     if (hitTargetCount < 2) cushionHits++; 
                     
                     if (b.spinX !== undefined) {
-                        let spinEffect = b.spinX * 0.06;
+                        let spinEffect = b.spinX * currentSpinMult;
                         if (dirX !== 0) b.vz += dirX * spinEffect * Math.abs(b.vx);
-                        else if (dirZ !== 0) b.vz -= dirZ * spinEffect * Math.abs(b.vz);
+                        else if (dirZ !== 0) b.vx -= dirZ * spinEffect * Math.abs(b.vz);
                     }
                 }
             });
@@ -889,7 +896,6 @@ function updateScoringHUD() {
     scoreEl.style.color = color;
 }
 
-// ★ 스트로크 타법이 반영된 3D 물리 엔진 스텝 함수
 function stepPhysicsState(states, spec, subSteps, events = null, stroke = 'normal') {
     let isMoving = false;
 
@@ -934,23 +940,22 @@ function stepPhysicsState(states, spec, subSteps, events = null, stroke = 'norma
                     let vx1 = b1.vx * cos + b1.vz * sin;
                     let vz1 = b1.vz * cos - b1.vx * sin;
                     let vx2 = b2.vx * cos + b2.vz * sin;
-                    let vz2 = b2.vz * cos - b2.vx * sin;
+                    let vz2 = b2.vx * cos - b2.vx * sin;
 
                     let newVx1 = vx2;
                     let newVz1 = vz1;
                     let newVx2 = vx1;
                     let newVz2 = vz2;
 
-                    // ★ 스트로크 타법 물리 공식 반영 (수구와 목적구 충돌 시)
                     if (b1.id === 0 && b1.spinY !== undefined) {
-                        let strokeMult = 0.12; // 기본 (normal)
+                        let strokeMult = 0.12; 
                         
                         if (stroke === 'short') {
-                            strokeMult = 0.18; // 끊어치기: 역회전 강하게 파고듦
-                            newVx1 *= 0.5;     // 수구가 1적구를 치고 앞으로 밀리려는 힘을 50% 억제
+                            strokeMult = 0.18; 
+                            newVx1 *= 0.5;     
                         } else if (stroke === 'long') {
-                            strokeMult = 0.09; // 밀어치기: 순간 반발력은 줄이고
-                            newVx1 = vx2 * 0.7 + vx1 * 0.3; // 수구의 원래 직진 에너지를 30% 살려 관통 효과 연출
+                            strokeMult = 0.09; 
+                            newVx1 = vx2 * 0.7 + vx1 * 0.3; 
                         }
                         
                         let followImpulse = b1.spinY * strokeMult * Math.abs(vx1);
@@ -977,25 +982,37 @@ function stepPhysicsState(states, spec, subSteps, events = null, stroke = 'norma
 
             let hitCushion = false;
             let dirX = 0, dirZ = 0;
+            let currentElasticity = spec.cushionElasticity;
+            let currentSpinMult = 0.06;
+
+            if (b.id === 0) {
+                if (stroke === 'short') {
+                    currentElasticity *= 0.9; 
+                    currentSpinMult = 0.09;
+                } else if (stroke === 'long') {
+                    currentElasticity *= 1.05; 
+                    currentSpinMult = 0.04;
+                }
+            }
 
             if (b.x > wB) {
                 b.x = wB;
-                if (b.vx > 0) { b.vx = -b.vx * spec.cushionElasticity; hitCushion = true; dirX = -1; }
+                if (b.vx > 0) { b.vx = -b.vx * currentElasticity; hitCushion = true; dirX = -1; }
             } else if (b.x < -wB) {
                 b.x = -wB;
-                if (b.vx < 0) { b.vx = -b.vx * spec.cushionElasticity; hitCushion = true; dirX = 1; }
+                if (b.vx < 0) { b.vx = -b.vx * currentElasticity; hitCushion = true; dirX = 1; }
             }
 
             if (b.z > hB) {
                 b.z = hB;
-                if (b.vz > 0) { b.vz = -b.vz * spec.cushionElasticity; hitCushion = true; dirZ = -1; }
+                if (b.vz > 0) { b.vz = -b.vz * currentElasticity; hitCushion = true; dirZ = -1; }
             } else if (b.z < -hB) {
                 b.z = -hB;
-                if (b.vz < 0) { b.vz = -b.vz * spec.cushionElasticity; hitCushion = true; dirZ = 1; }
+                if (b.vz < 0) { b.vz = -b.vz * currentElasticity; hitCushion = true; dirZ = 1; }
             }
 
             if (hitCushion && b.id === 0 && b.spinX !== undefined) {
-                let spinEffect = b.spinX * 0.06;
+                let spinEffect = b.spinX * currentSpinMult;
                 if (dirX !== 0) {
                     b.vz += dirX * spinEffect * Math.abs(b.vx);
                 } else if (dirZ !== 0) {
@@ -1396,7 +1413,6 @@ function updateAimLine() {
     runVirtualTrajectory(rad);
 }
 
-// 실시간 득점 예측 가상 궤적 계산
 function runVirtualTrajectory(rad) {
     if (!balls || balls.length === 0 || !cueBall) return;
 
@@ -1437,7 +1453,6 @@ function runVirtualTrajectory(rad) {
 
     for (let frame = 0; frame < SIM_FRAMES; frame++) {
         let virtEvents = [];
-        // 가상 궤적 계산 시에도 현재 선택된 스트로크(stroke) 타법을 전달!
         let isMoving = stepPhysicsState(vStates, tableSpec, SUB_STEPS, virtEvents, currentStroke);
 
         for (let ev of virtEvents) {
@@ -1510,7 +1525,6 @@ function runVirtualTrajectory(rad) {
         theoryLine.visible = true;
     }
 
-    // UI 예측 결과 패널 반영
     const scoreEl = document.getElementById('scoreDisp');
     if (scoreEl && !isSimulating && !isReplaying) {
         if (virtValidScore) {
@@ -1739,7 +1753,6 @@ function updatePhysics() {
     const SUB_STEPS = 10;
     let realEvents = [];
     
-    // ★ 실제 샷을 칠 때도 현재 선택된 스트로크(stroke) 타법을 전달합니다.
     const currentStroke = document.getElementById('strokeType').value;
     let isMoving = stepPhysicsState(realBallStates, tableSpec, SUB_STEPS, realEvents, currentStroke);
 

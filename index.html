@@ -16,7 +16,7 @@
         #sidebar { 
             position: absolute; right: 0; top: 0; bottom: 0;
             width: 340px; background: #1e1e1e; border-left: 1px solid #333; 
-            z-index: 20; transition: transform 0.3s ease;
+            z-index: 40; transition: transform 0.3s ease; /* 최상위로 올림 */
         }
 
         #sidebar-content {
@@ -32,7 +32,7 @@
             border-radius: 8px 0 0 8px; color: #2ecc71;
             font-size: 16px; font-weight: bold; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
-            z-index: 25; box-shadow: -3px 0 6px rgba(0,0,0,0.5);
+            z-index: 45; box-shadow: -3px 0 6px rgba(0,0,0,0.5); /* 최상위로 올림 */
             transition: background 0.2s, color 0.2s;
         }
         #sidebarToggleBtn:hover { background: #2a2a2a; color: #f1c40f; }
@@ -72,7 +72,7 @@
         @media (max-width: 768px) {
             #sidebar { width: 300px; }
             #floating-quick-bar { bottom: 15px; right: 15px; }
-            .btn-float-open { display: inline-block; } /* 모바일에서만 설정 버튼 표시 */
+            .btn-float-open { display: inline-block; } 
             #preset-title-display { width: 90%; top: 10px; padding: 8px 12px; }
         }
 
@@ -339,7 +339,6 @@ function createTextSprite(message, color) {
     const texture = new THREE.CanvasTexture(canvas);
     const spriteMaterial = new THREE.SpriteMaterial({ map: texture, depthTest: false });
     const sprite = new THREE.Sprite(spriteMaterial);
-    // 크기를 기존 3.5에서 1.75(1/2 크기)로 대폭 축소
     sprite.scale.set(1.75, 1.75, 1);
     return sprite;
 }
@@ -353,7 +352,7 @@ function drawSystemLabels(mode) {
     const h2 = tableSpec.height / 2;
     const dw = tableSpec.width / 8;
     const dh = tableSpec.height / 4;
-    const y = 0.5; // 포인트 텍스트 높이 살짝 낮춤
+    const y = 0.5;
 
     let labels = [];
 
@@ -410,7 +409,6 @@ function loadSelectedPreset() {
     const select = document.getElementById('presetSelect');
     const idx = select.value;
     
-    // 빈 값(랜덤 모드) 선택 시 라벨 지우고 리셋
     if (idx === "") {
         resetBalls(true);
         return;
@@ -438,16 +436,14 @@ function loadSelectedPreset() {
     syncRealStatesFromMeshes();
     updateAimLine();
 
-    // 학습자 가이드 텍스트 업데이트
     document.getElementById('preset-title-display').style.display = 'block';
     let sysName = (mode === 'fiveHalf') ? '파이브 앤 하프' : '플러스 시스템';
-    document.getElementById('preset-name').innerText = `[${sysName}] ${p.name.split('(')[0]}`; // 예제 이름 간략화
+    document.getElementById('preset-name').innerText = `[${sysName}] ${p.name.split('(')[0]}`; 
     
     let sxTxt = p.sx > 0 ? `우 ${p.sx} Tip` : (p.sx < 0 ? `좌 ${Math.abs(p.sx)} Tip` : `무회전`);
     let syTxt = p.sy > 0 ? `상단 ${p.sy} Tip` : (p.sy < 0 ? `하단 ${Math.abs(p.sy)} Tip` : `중앙`);
     document.getElementById('preset-guide').innerText = `💡 권장: 당점 [${sxTxt} / ${syTxt}], 속도 [${p.pow}m/s]`;
 
-    // 시스템 선택시에만 포인트 숫자 그리기
     drawSystemLabels(mode);
 }
 
@@ -994,10 +990,9 @@ function resetBalls(isRandom = false) {
     let fbReplay = document.getElementById('btnFloatReplay');
     if(fbReplay) fbReplay.disabled = true;
     
-    // 연습 모드 해제 시 숫자 라벨과 가이드 HUD를 숨김
     if(systemLabelsGroup) { scene.remove(systemLabelsGroup); systemLabelsGroup = null; }
     document.getElementById('preset-title-display').style.display = 'none';
-    document.getElementById('presetSelect').value = ""; // 선택창 초기화
+    document.getElementById('presetSelect').value = ""; 
 
     clearTrails();
     resetShotScoring();
@@ -1529,7 +1524,6 @@ function updateSystemHUD() {
     
     populatePresetSelect();
     
-    // 시스템 변경 시 3D 라벨 지우기 (예제 선택 시에만 보이게 됨)
     if(systemLabelsGroup) { scene.remove(systemLabelsGroup); systemLabelsGroup = null; }
     document.getElementById('preset-title-display').style.display = 'none';
 }

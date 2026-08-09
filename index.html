@@ -41,12 +41,12 @@
         /* 학습 가이드 중앙 상단 HUD */
         #preset-title-display {
             position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
-            background: rgba(0,0,0,0.85); border: 1px solid #f1c40f; border-radius: 8px;
-            padding: 10px 20px; text-align: center; z-index: 30; display: none; pointer-events: none;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.6); min-width: 360px;
+            background: rgba(0,0,0,0.9); border: 1px solid #3498db; border-radius: 8px;
+            padding: 12px 24px; text-align: center; z-index: 30; display: none; pointer-events: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.7); min-width: 380px;
         }
-        #preset-name { color: #f1c40f; font-weight: bold; font-size: 15px; margin-bottom: 6px; }
-        #preset-guide { color: #2ecc71; font-size: 13px; font-weight: bold; line-height: 1.4; }
+        #preset-name { color: #3498db; font-weight: bold; font-size: 16px; margin-bottom: 6px; }
+        #preset-guide { color: #2ecc71; font-size: 14px; font-weight: bold; line-height: 1.5; }
         .preset-hint { font-size: 12px; color: #ddd; font-weight: normal; margin-top: 6px; display: block; word-break: keep-all;}
 
         /* 플로팅 퀵 버튼 영역 */
@@ -203,8 +203,7 @@
                 <select id="systemMode" onchange="updateSystemHUD()">
                     <option value="fiveHalf">파이브 앤 하프 시스템</option>
                     <option value="plus">플러스 시스템</option>
-                    <option value="ballSystem">볼퍼스트 (옆돌리기)</option>
-                    <option value="noSpin">무회전 시스템</option>
+                    <option value="ballSystem">가이드 모드 (반사각)</option>
                 </select>
             </div>
 
@@ -294,32 +293,195 @@ let pointerStartX = 0; let pointerStartY = 0;
 let audioCtx = null;
 let realBallStates = [];
 
+let kissOccurredInShot = false; 
+
+// ★ 실전적이고 쉬운 배치 모음 (볼퍼스트와 빈쿠션을 명확히 구분)
 const SYSTEM_PRESETS = {
     fiveHalf: [
-        { name: "50 - 30 = 20 [뒤돌리기]", cue: {x: 8, z: 2}, b1: {x: 5, z: -3}, b2: {x: -12, z: 2}, angle: 236.5, pow: 16, sx: 2, sy: 0 },
-        { name: "45 - 20 = 25 [옆돌리기]", cue: {x: 4, z: 5}, b1: {x: -2, z: 0}, b2: {x: -10, z: -4}, angle: 218.0, pow: 15, sx: 2.5, sy: 1 },
-        { name: "60 - 20 = 40 [길게 뒤돌리기]", cue: {x: 10, z: 3}, b1: {x: 5, z: -2}, b2: {x: -5, z: 5}, angle: 228.0, pow: 18, sx: 3, sy: 0 },
-        { name: "40 - 20 = 20 [짧은 옆돌리기]", cue: {x: 0, z: 4}, b1: {x: -5, z: 0}, b2: {x: -12, z: 2}, angle: 215.5, pow: 15, sx: 2, sy: 0 },
-        { name: "35 - 15 = 20 [비껴치기]", cue: {x: -5, z: 3}, b1: {x: -8, z: -1}, b2: {x: -12, z: 2}, angle: 230.5, pow: 14, sx: 2, sy: 0 },
-        { name: "50 - 20 = 30 [대회전 뒤돌리기]", cue: {x: 7, z: 5}, b1: {x: 2, z: -4}, b2: {x: -8, z: -2}, angle: 240.0, pow: 19, sx: 3, sy: 0 },
-        { name: "55 - 25 = 30 [길게 세워치기]", cue: {x: 9, z: 4}, b1: {x: 3, z: -3}, b2: {x: -8, z: -2}, angle: 227.0, pow: 18, sx: 3, sy: -1 },
-        { name: "45 - 35 = 10 [짧은 뒤돌리기]", cue: {x: 5, z: 2}, b1: {x: -2, z: -5}, b2: {x: -13, z: 5}, angle: 223.5, pow: 14, sx: 1.5, sy: 0 },
-        { name: "65 - 15 = 50 [대형 횡단 샷]", cue: {x: 12, z: 5}, b1: {x: 6, z: -2}, b2: {x: 0, z: 5}, angle: 231.5, pow: 20, sx: 3, sy: 1 },
-        { name: "50 - 40 = 10 [깊은 코너 옆돌리기]", cue: {x: 6, z: 5}, b1: {x: -3, z: 2}, b2: {x: -13, z: 5}, angle: 196.0, pow: 15, sx: 2, sy: 0 }
+        { name: "기본 옆돌리기 (볼퍼스트)", type: "ballFirst", cue: {x: 4, z: 5}, b1: {x: -2, z: 0}, b2: {x: -10, z: -4}, pow: 15, sx: 2, sy: 1 },
+        { name: "기본 뒤돌리기 (볼퍼스트)", type: "ballFirst", cue: {x: 8, z: 2}, b1: {x: 5, z: -3}, b2: {x: -12, z: 2}, pow: 16, sx: 2, sy: -0.5 },
+        { name: "대회전 뒤돌리기 (볼퍼스트)", type: "ballFirst", cue: {x: 7, z: 5}, b1: {x: 2, z: -4}, b2: {x: -8, z: -2}, pow: 19, sx: 3, sy: 0 },
+        { name: "짧은 빗겨치기 (볼퍼스트)", type: "ballFirst", cue: {x: -5, z: 3}, b1: {x: -8, z: -1}, b2: {x: -12, z: 2}, pow: 14, sx: 2, sy: 0 },
+        { name: "파이브앤하프 뱅크샷 1", type: "bank", cue: {x: 10, z: 6}, b1: {x: -12, z: 1}, b2: {x: -10, z: -1}, baseAngle: 228, pow: 16, sx: 2, sy: 0 },
+        { name: "파이브앤하프 뱅크샷 2", type: "bank", cue: {x: 4, z: 6}, b1: {x: -12, z: 1}, b2: {x: -10, z: -1}, baseAngle: 242, pow: 15, sx: 2, sy: 0 }
     ],
     plus: [
-        { name: "20 + 20 = 40 [플러스 옆돌리기]", cue: {x: -8, z: -2}, b1: {x: -12, z: 2}, b2: {x: 5, z: 5}, angle: 145.0, pow: 15, sx: 2, sy: 0 },
-        { name: "30 + 10 = 40 [긴 수구 비껴치기]", cue: {x: -2, z: -3}, b1: {x: -8, z: 1}, b2: {x: 5, z: 5}, angle: 150.5, pow: 16, sx: 2.5, sy: 1 },
-        { name: "25 + 15 = 40 [중앙 플러스]", cue: {x: -5, z: -2}, b1: {x: -10, z: 0}, b2: {x: 5, z: 5}, angle: 162.0, pow: 15, sx: 2, sy: 0 },
-        { name: "20 + 30 = 50 [길게 세워치기]", cue: {x: -8, z: -1}, b1: {x: -12, z: 3}, b2: {x: 10, z: 5}, angle: 138.0, pow: 17, sx: 3, sy: -1 },
-        { name: "15 + 25 = 40 [짧은 수구 빗겨치기]", cue: {x: -11, z: -2}, b1: {x: -13, z: 2}, b2: {x: 5, z: 5}, angle: 122.0, pow: 14, sx: 2, sy: 0 },
-        { name: "30 + 20 = 50 [대각선 플러스]", cue: {x: -2, z: -4}, b1: {x: -7, z: 2}, b2: {x: 10, z: 5}, angle: 133.0, pow: 18, sx: 3, sy: 0 },
-        { name: "35 + 15 = 50 [코너 깊은 옆돌리기]", cue: {x: 1, z: -4}, b1: {x: -6, z: 1}, b2: {x: 10, z: 5}, angle: 147.0, pow: 18, sx: 3, sy: 0 },
-        { name: "10 + 30 = 40 [극단 짧은 세워치기]", cue: {x: -12, z: -2}, b1: {x: -13, z: 1}, b2: {x: 5, z: 5}, angle: 111.0, pow: 14, sx: 2, sy: -1 },
-        { name: "25 + 25 = 50 [표준 대회전 플러스]", cue: {x: -5, z: -3}, b1: {x: -11, z: 2}, b2: {x: 10, z: 5}, angle: 142.5, pow: 17, sx: 2.5, sy: 0 },
-        { name: "20 + 15 = 35 [짧은 반사 각]", cue: {x: -8, z: -2}, b1: {x: -11, z: 0}, b2: {x: 2, z: 5}, angle: 152.0, pow: 15, sx: 2, sy: 0 }
+        { name: "플러스 옆돌리기 (볼퍼스트)", type: "ballFirst", cue: {x: -8, z: -2}, b1: {x: -12, z: 2}, b2: {x: 5, z: 5}, pow: 15, sx: 2, sy: 0 },
+        { name: "긴 수구 비껴치기 (볼퍼스트)", type: "ballFirst", cue: {x: -2, z: -3}, b1: {x: -8, z: 1}, b2: {x: 5, z: 5}, pow: 16, sx: 2, sy: 1 },
+        { name: "길게 세워치기 (볼퍼스트)", type: "ballFirst", cue: {x: -8, z: -1}, b1: {x: -12, z: 3}, b2: {x: 10, z: 5}, pow: 17, sx: 3, sy: -1 },
+        { name: "대회전 플러스 (볼퍼스트)", type: "ballFirst", cue: {x: -5, z: -3}, b1: {x: -11, z: 2}, b2: {x: 10, z: 5}, pow: 18, sx: 2.5, sy: 0 },
+        { name: "플러스 뱅크샷 1", type: "bank", cue: {x: -8, z: -5}, b1: {x: 5, z: 5}, b2: {x: 7, z: 3}, baseAngle: 140, pow: 16, sx: 2, sy: 0 },
+        { name: "플러스 뱅크샷 2", type: "bank", cue: {x: -2, z: -5}, b1: {x: 10, z: 5}, b2: {x: 12, z: 3}, baseAngle: 145, pow: 17, sx: 2.5, sy: 0 }
     ]
 };
+
+// ★ AI 완벽 득점 탐색기 (볼퍼스트/뱅크샷 구분 및 키스 완벽 차단)
+function findPerfectAngle(preset) {
+    let baseRad = 0;
+    if (preset.type === 'ballFirst') {
+        // 볼퍼스트는 1적구를 향하는 각도를 기준으로 탐색 시작
+        baseRad = Math.atan2(preset.b1.z - preset.cue.z, preset.b1.x - preset.cue.x) * 180 / Math.PI;
+    } else {
+        baseRad = preset.baseAngle; // 뱅크샷은 제공된 기준 각도 사용
+    }
+
+    let bestAngle = baseRad;
+    let minPenalty = Infinity;
+
+    // 1단계: 넓은 범위 거친 탐색 (좌우 10도 탐색 - 두께 조절)
+    for (let ang = -10; ang <= 10; ang += 0.2) {
+        let testRad = (baseRad + ang) * Math.PI / 180;
+        let penalty = evalShot(testRad, preset);
+        if (penalty < minPenalty) {
+            minPenalty = penalty;
+            bestAngle = baseRad + ang;
+        }
+    }
+
+    // 2단계: 정답 근처 초정밀 탐색 (좌우 0.5도)
+    let fineBest = bestAngle;
+    let fineMin = minPenalty;
+    for (let ang = -0.5; ang <= 0.5; ang += 0.02) {
+        let testRad = (bestAngle + ang) * Math.PI / 180;
+        let penalty = evalShot(testRad, preset);
+        if (penalty < fineMin) {
+            fineMin = penalty;
+            fineBest = bestAngle + ang;
+        }
+    }
+    
+    return { angle: (fineBest + 360) % 360, success: fineMin < 1000 };
+}
+
+function evalShot(rad, preset) {
+    let vStates = [
+        { id: 0, x: preset.cue.x, z: preset.cue.z, vx: Math.cos(rad) * preset.pow * 0.08, vz: Math.sin(rad) * preset.pow * 0.08, r: tableSpec.ballR, spinX: preset.sx, spinY: preset.sy },
+        { id: 1, x: preset.b1.x, z: preset.b1.z, vx: 0, vz: 0, r: tableSpec.ballR },
+        { id: 2, x: preset.b2.x, z: preset.b2.z, vx: 0, vz: 0, r: tableSpec.ballR }
+    ];
+
+    let cushionHits = 0;
+    let hitTargetCount = 0;
+    let hitTarget1 = false;
+    let hitTarget2 = false;
+    let kissOccurred = false;
+    let validScore = false;
+    let minDistToRemaining = Infinity;
+    
+    let firstHitType = null; // 'ball' or 'cushion'을 기록하여 꼼수 방지
+
+    const wB = tableSpec.width / 2 - tableSpec.ballR;
+    const hB = tableSpec.height / 2 - tableSpec.ballR;
+    const SUB_STEPS = 5;
+
+    for (let frame = 0; frame < 250; frame++) {
+        let isMoving = false;
+        for (let step = 0; step < SUB_STEPS; step++) {
+            vStates.forEach(b => {
+                if (Math.hypot(b.vx, b.vz) > 0.001) {
+                    isMoving = true;
+                    b.x += b.vx / SUB_STEPS;
+                    b.z += b.vz / SUB_STEPS;
+                    b.vx *= Math.pow(tableSpec.friction, 1 / SUB_STEPS);
+                    b.vz *= Math.pow(tableSpec.friction, 1 / SUB_STEPS);
+                } else { b.vx = 0; b.vz = 0; }
+            });
+
+            for (let i = 0; i < 3; i++) {
+                for (let j = i + 1; j < 3; j++) {
+                    let b1 = vStates[i], b2 = vStates[j];
+                    let dx = b2.x - b1.x, dz = b2.z - b1.z;
+                    let dist = Math.hypot(dx, dz);
+                    let minDist = b1.r + b2.r;
+
+                    if (dist < minDist) {
+                        if (dist === 0) { dx = 0.001; dz = 0; dist = 0.001; }
+
+                        // 목적구끼리의 충돌 (키스) 감지
+                        if (b1.id !== 0 && b2.id !== 0) {
+                            kissOccurred = true;
+                        } 
+                        // 흰 공이 목적구를 타격
+                        else if (b1.id === 0 || b2.id === 0) {
+                            if (firstHitType === null) firstHitType = 'ball'; // 첫 타격이 공임을 기록
+                            
+                            let targetId = (b1.id === 0) ? b2.id : b1.id;
+                            if (targetId === 1 && !hitTarget1) { hitTarget1 = true; hitTargetCount++; }
+                            if (targetId === 2 && !hitTarget2) { hitTarget2 = true; hitTargetCount++; }
+                            
+                            if (hitTargetCount === 2 && !validScore) {
+                                if (cushionHits >= 3 && !kissOccurred) validScore = true;
+                            }
+                        }
+
+                        let angle = Math.atan2(dz, dx);
+                        let sin = Math.sin(angle), cos = Math.cos(angle);
+                        let vx1 = b1.vx * cos + b1.vz * sin;
+                        let vz1 = b1.vz * cos - b1.vx * sin;
+                        let vx2 = b2.vx * cos + b2.vz * sin;
+                        let vz2 = b2.vz * cos - b2.vx * sin;
+
+                        let newVx1 = vx2, newVz1 = vz1, newVx2 = vx1, newVz2 = vz2;
+                        if (b1.id === 0 && b1.spinY !== undefined) newVx1 += b1.spinY * 0.12 * Math.abs(vx1);
+
+                        b1.vx = newVx1 * cos - newVz1 * sin;
+                        b1.vz = newVz1 * cos + newVx1 * sin;
+                        b2.vx = newVx2 * cos - newVz2 * sin;
+                        b2.vz = newVz2 * cos + newVx2 * sin;
+
+                        let overlap = minDist - dist;
+                        b1.x -= Math.cos(angle) * overlap / 2;
+                        b1.z -= Math.sin(angle) * overlap / 2;
+                        b2.x += Math.cos(angle) * overlap / 2;
+                        b2.z += Math.sin(angle) * overlap / 2;
+                    }
+                }
+            }
+
+            vStates.forEach(b => {
+                let hitCushion = false, dirX = 0, dirZ = 0;
+                if (b.x > wB) { b.x = wB; if (b.vx > 0) { b.vx = -b.vx * tableSpec.cushionElasticity; hitCushion = true; dirX = -1; } }
+                else if (b.x < -wB) { b.x = -wB; if (b.vx < 0) { b.vx = -b.vx * tableSpec.cushionElasticity; hitCushion = true; dirX = 1; } }
+                if (b.z > hB) { b.z = hB; if (b.vz > 0) { b.vz = -b.vz * tableSpec.cushionElasticity; hitCushion = true; dirZ = -1; } }
+                else if (b.z < -hB) { b.z = -hB; if (b.vz < 0) { b.vz = -b.vz * tableSpec.cushionElasticity; hitCushion = true; dirZ = 1; } }
+
+                if (hitCushion && b.id === 0) {
+                    if (firstHitType === null) firstHitType = 'cushion'; // 첫 타격이 쿠션임을 기록
+                    
+                    if (hitTargetCount < 2) cushionHits++; // 2적구를 맞추기 전까지만 쿠션 수 카운트
+                    
+                    if (b.spinX !== undefined) {
+                        let spinEffect = b.spinX * 0.06;
+                        if (dirX !== 0) b.vz += dirX * spinEffect * Math.abs(b.vx);
+                        else if (dirZ !== 0) b.vx -= dirZ * spinEffect * Math.abs(b.vz);
+                    }
+                }
+            });
+        }
+        if (validScore) break; // 완벽한 득점 경로 시 즉시 종료
+
+        let target = null;
+        if (!hitTarget1) target = vStates[1];
+        else if (!hitTarget2) target = vStates[2];
+        if (target) {
+            let d = Math.hypot(target.x - vStates[0].x, target.z - vStates[0].z);
+            if (d < minDistToRemaining) minDistToRemaining = d;
+        }
+    }
+
+    let penalty = 0;
+    
+    // ★ 강제 규칙: 뱅크샷 예제인데 공부터 맞추거나, 볼퍼스트 예제인데 빈쿠션부터 맞추면 오답 처리!
+    if (preset.type === 'ballFirst' && firstHitType === 'cushion') penalty += 20000;
+    if (preset.type === 'bank' && firstHitType === 'ball') penalty += 20000;
+    
+    if (kissOccurred) penalty += 10000; // 키스 발생 절대 회피
+    if (!hitTarget1 && !hitTarget2) penalty += 3000 + minDistToRemaining;
+    else if (!hitTarget1 || !hitTarget2) penalty += 1000 + minDistToRemaining;
+    if (cushionHits < 3) penalty += 500 * (3 - cushionHits);
+
+    return penalty;
+}
 
 function createTextSprite(message, color) {
     const canvas = document.createElement('canvas');
@@ -417,38 +579,64 @@ function loadSelectedPreset() {
     const p = presets[idx];
     if (!p) return;
 
-    cueBall.position.set(p.cue.x, tableSpec.ballR, p.cue.z);
-    objectBall1.position.set(p.b1.x, tableSpec.ballR, p.b1.z);
-    objectBall2.position.set(p.b2.x, tableSpec.ballR, p.b2.z);
-
-    savedBallPositions = balls.map(b => ({ x: b.position.x, z: b.position.z }));
-
-    document.getElementById('aimAngle').value = p.angle.toFixed(1);
-    document.getElementById('power').value = p.pow;
-    document.getElementById('spinX').value = p.sx;
-    document.getElementById('spinY').value = p.sy;
-
-    updateAngleLabel(p.angle.toFixed(1));
-    updatePowerLabel(p.pow);
-    updateSpinXLabel(p.sx);
-    updateSpinYLabel(p.sy);
-
-    updateCueTipFromSliders();
-    syncRealStatesFromMeshes();
-    updateAimLine();
-
+    // 대기 UI 표시
     document.getElementById('preset-title-display').style.display = 'block';
     let sysName = (mode === 'fiveHalf') ? '파이브 앤 하프' : '플러스 시스템';
     document.getElementById('preset-name').innerText = `[${sysName}] ${p.name}`; 
+    document.getElementById('preset-guide').innerHTML = `⏳ <b>AI가 완벽한 3쿠션 득점 경로를 탐색 중입니다...</b>`;
     
-    let sxTxt = p.sx > 0 ? `우 ${p.sx} Tip` : (p.sx < 0 ? `좌 ${Math.abs(p.sx)} Tip` : `무회전`);
-    let syTxt = p.sy > 0 ? `상단 ${p.sy} Tip` : (p.sy < 0 ? `하단 ${Math.abs(p.sy)} Tip` : `중앙`);
-    
-    document.getElementById('preset-guide').innerHTML = 
-        `💡 <b>모범 답안:</b> 당점 [${sxTxt} / ${syTxt}], 파워 [${p.pow}m/s]<br>` +
-        `<span class="preset-hint">🎯 <b>(지정된 1쿠션 지점으로 향하는 기본 세팅입니다. 미세조정 버튼으로 완벽한 득점 경로를 맞춰보세요!)</b></span>`;
+    // UI 업데이트가 화면에 반영될 수 있도록 짧은 딜레이 후 AI 연산 시작
+    setTimeout(() => {
+        cueBall.position.set(p.cue.x, tableSpec.ballR, p.cue.z);
+        objectBall1.position.set(p.b1.x, tableSpec.ballR, p.b1.z);
+        objectBall2.position.set(p.b2.x, tableSpec.ballR, p.b2.z);
 
-    drawSystemLabels(mode);
+        savedBallPositions = balls.map(b => ({ x: b.position.x, z: b.position.z }));
+
+        // ★ 백그라운드 AI 탐색기 가동 (볼퍼스트/뱅크샷 구분)
+        let aiResult = findPerfectAngle(p);
+
+        document.getElementById('aimAngle').value = aiResult.angle.toFixed(1);
+        document.getElementById('power').value = p.pow;
+        document.getElementById('spinX').value = p.sx;
+        document.getElementById('spinY').value = p.sy;
+
+        updateAngleLabel(aiResult.angle.toFixed(1));
+        updatePowerLabel(p.pow);
+        updateSpinXLabel(p.sx);
+        updateSpinYLabel(p.sy);
+
+        updateCueTipFromSliders();
+        syncRealStatesFromMeshes();
+        updateAimLine();
+
+        // ★ 실전 당구 시계방향 당점 텍스트 변환 로직
+        let clock = "";
+        if (p.sx == 0 && p.sy == 0) clock = "무회전(정중앙)";
+        else if (p.sx == 0 && p.sy > 0) clock = "12시 방향";
+        else if (p.sx > 0 && p.sy > 0) clock = "1~2시 방향";
+        else if (p.sx > 0 && p.sy == 0) clock = "3시 방향";
+        else if (p.sx > 0 && p.sy < 0) clock = "4~5시 방향";
+        else if (p.sx == 0 && p.sy < 0) clock = "6시 방향";
+        else if (p.sx < 0 && p.sy < 0) clock = "7~8시 방향";
+        else if (p.sx < 0 && p.sy == 0) clock = "9시 방향";
+        else if (p.sx < 0 && p.sy > 0) clock = "10~11시 방향";
+
+        let tipVal = Math.max(Math.abs(p.sx), Math.abs(p.sy));
+        let tipStr = (tipVal > 0) ? `${clock} ${tipVal}팁` : clock;
+        
+        if (aiResult.success) {
+            document.getElementById('preset-guide').innerHTML = 
+                `💡 <b>모범 답안 세팅 완료:</b> 당점 [${tipStr}], 파워 [${p.pow}m/s]<br>` +
+                `<span class="preset-hint">🎯 <b>(흰 공이 3쿠션을 거쳐 완벽히 득점하도록 조준되었습니다. 샷 실행을 누르세요!)</b></span>`;
+        } else {
+            document.getElementById('preset-guide').innerHTML = 
+                `💡 <b>모범 답안 안내:</b> 당점 [${tipStr}], 파워 [${p.pow}m/s]<br>` +
+                `<span class="preset-hint" style="color:#e74c3c;">⚠️ <b>(최적 궤적을 찾는 중입니다. 버튼으로 미세 조정을 해보세요!)</b></span>`;
+        }
+
+        drawSystemLabels(mode);
+    }, 50);
 }
 
 function setup2DCueBallWidget() {
@@ -579,6 +767,7 @@ function resetShotScoring() {
     hitObjects = [];
     scoreStatus = "NONE";
     scoredCushionCount = 0;
+    kissOccurredInShot = false; 
     updateScoringHUD();
 }
 
@@ -602,7 +791,9 @@ function updateScoringHUD() {
         color = "#2ecc71";
     } else {
         let failReason = "";
-        if (hitObjects.length === 2) {
+        if (kissOccurredInShot) {
+            failReason = ` (키스 발생: 목적구끼리 충돌)`;
+        } else if (hitObjects.length === 2) {
             let cStr = (cushionHitCount === 0) ? "직접" : `${cushionHitCount}쿠션`;
             failReason = ` (${cStr} 맞고 2적구 타격 - 3쿠션 미달)`;
         } else if (hitObjects.length === 1) {
@@ -1227,7 +1418,7 @@ function calculateThickness(rad) {
     });
 
     if (!closestHit) {
-        thicknessEl.innerText = "조준선에 맞는 공 없음";
+        thicknessEl.innerText = "조준선에 맞는 공 없음 (빈쿠션/가락 우선)";
         thicknessEl.style.color = "#888";
         return;
     }
@@ -1418,7 +1609,7 @@ function updatePhysics() {
         if (ev.type === 'cushion') {
             playCollisionSound(ev.speed, true);
             if (ev.ball.id === 0) {
-                // ★ 핵심 수정: 수구가 2적구를 맞추기 전까지만 쿠션 수를 셉니다.
+                // 흰 공이 아직 두 목적구를 모두 맞추지 않았을 때만 쿠션을 카운트
                 if (hitObjects.length < 2) {
                     cushionHitCount++;
                 }
@@ -1426,7 +1617,15 @@ function updatePhysics() {
             }
         } else if (ev.type === 'ball') {
             playCollisionSound(ev.speed, false);
-            if (ev.b1.id === 0 || ev.b2.id === 0) {
+            
+            // ★ 실시간 키스(목적구끼리 충돌) 감지하여 득점 취소 적용
+            if (ev.b1.id !== 0 && ev.b2.id !== 0) {
+                if (hitObjects.length < 2) {
+                    kissOccurredInShot = true;
+                }
+            } 
+            // 흰 공이 목적구를 맞췄을 때
+            else if (ev.b1.id === 0 || ev.b2.id === 0) {
                 let targetId = (ev.b1.id === 0) ? ev.b2.id : ev.b1.id;
                 let targetMesh = balls[targetId];
                 if (targetMesh && !hitObjects.includes(targetMesh)) {
@@ -1434,18 +1633,19 @@ function updatePhysics() {
                     
                     if (currentGameMode === '3ball') {
                         if (hitObjects.length === 2) {
-                            if (cushionHitCount >= 3 && scoreStatus !== "SUCCESS") {
+                            if (cushionHitCount >= 3 && !kissOccurredInShot && scoreStatus !== "SUCCESS") {
                                 scoreStatus = "SUCCESS";
                                 scoredCushionCount = cushionHitCount;
                             } else {
-                                // ★ 쿠션 횟수가 부족한 상태에서 2적구를 맞추면 즉시 실패 처리!
                                 scoreStatus = "FAIL";
                             }
                         }
                     } else if (currentGameMode === '4ball') {
-                        if (hitObjects.length === 2 && scoreStatus !== "SUCCESS") {
+                        if (hitObjects.length === 2 && !kissOccurredInShot && scoreStatus !== "SUCCESS") {
                             scoreStatus = "SUCCESS";
                             scoredCushionCount = cushionHitCount;
+                        } else if (hitObjects.length === 2 && kissOccurredInShot) {
+                            scoreStatus = "FAIL";
                         }
                     }
                     updateScoringHUD();

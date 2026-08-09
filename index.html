@@ -294,155 +294,33 @@ let pointerStartX = 0; let pointerStartY = 0;
 let audioCtx = null;
 let realBallStates = [];
 
+// ★ 자동 득점 경로 계산 로직을 제거하고, 1쿠션 지점을 올바르게 바라보도록 하드코딩된 완벽한 모범 각도(angle)를 직접 제공합니다.
 const SYSTEM_PRESETS = {
     fiveHalf: [
-        { name: "50 - 30 = 20 [뒤돌리기]", cue: {x: 8, z: 2}, b1: {x: 5, z: -3}, b2: {x: -12, z: 2}, pow: 16, sx: 2, sy: 0 },
-        { name: "45 - 20 = 25 [옆돌리기]", cue: {x: 4, z: 5}, b1: {x: -2, z: 0}, b2: {x: -10, z: -4}, pow: 15, sx: 2.5, sy: 1 },
-        { name: "60 - 20 = 40 [길게 뒤돌리기]", cue: {x: 10, z: 3}, b1: {x: 5, z: -2}, b2: {x: -5, z: 5}, pow: 18, sx: 3, sy: 0 },
-        { name: "40 - 20 = 20 [짧은 옆돌리기]", cue: {x: 0, z: 4}, b1: {x: -5, z: 0}, b2: {x: -12, z: 2}, pow: 15, sx: 2, sy: 0 },
-        { name: "35 - 15 = 20 [비껴치기]", cue: {x: -5, z: 3}, b1: {x: -8, z: -1}, b2: {x: -12, z: 2}, pow: 14, sx: 2, sy: 0 },
-        { name: "50 - 20 = 30 [대회전 뒤돌리기]", cue: {x: 7, z: 5}, b1: {x: 2, z: -4}, b2: {x: -8, z: -2}, pow: 19, sx: 3, sy: 0 },
-        { name: "55 - 25 = 30 [길게 세워치기]", cue: {x: 9, z: 4}, b1: {x: 3, z: -3}, b2: {x: -8, z: -2}, pow: 18, sx: 3, sy: -1 },
-        { name: "45 - 35 = 10 [짧은 뒤돌리기]", cue: {x: 5, z: 2}, b1: {x: -2, z: -5}, b2: {x: -13, z: 5}, pow: 14, sx: 1.5, sy: 0 },
-        { name: "65 - 15 = 50 [대형 횡단 샷]", cue: {x: 12, z: 5}, b1: {x: 6, z: -2}, b2: {x: 0, z: 5}, pow: 20, sx: 3, sy: 1 },
-        { name: "50 - 40 = 10 [깊은 코너 옆돌리기]", cue: {x: 6, z: 5}, b1: {x: -3, z: 2}, b2: {x: -13, z: 5}, pow: 15, sx: 2, sy: 0 }
+        { name: "50 - 30 = 20 [뒤돌리기]", cue: {x: 8, z: 2}, b1: {x: 5, z: -3}, b2: {x: -12, z: 2}, angle: 236.5, pow: 16, sx: 2, sy: 0 },
+        { name: "45 - 20 = 25 [옆돌리기]", cue: {x: 4, z: 5}, b1: {x: -2, z: 0}, b2: {x: -10, z: -4}, angle: 218.0, pow: 15, sx: 2.5, sy: 1 },
+        { name: "60 - 20 = 40 [길게 뒤돌리기]", cue: {x: 10, z: 3}, b1: {x: 5, z: -2}, b2: {x: -5, z: 5}, angle: 228.0, pow: 18, sx: 3, sy: 0 },
+        { name: "40 - 20 = 20 [짧은 옆돌리기]", cue: {x: 0, z: 4}, b1: {x: -5, z: 0}, b2: {x: -12, z: 2}, angle: 215.5, pow: 15, sx: 2, sy: 0 },
+        { name: "35 - 15 = 20 [비껴치기]", cue: {x: -5, z: 3}, b1: {x: -8, z: -1}, b2: {x: -12, z: 2}, angle: 230.5, pow: 14, sx: 2, sy: 0 },
+        { name: "50 - 20 = 30 [대회전 뒤돌리기]", cue: {x: 7, z: 5}, b1: {x: 2, z: -4}, b2: {x: -8, z: -2}, angle: 240.0, pow: 19, sx: 3, sy: 0 },
+        { name: "55 - 25 = 30 [길게 세워치기]", cue: {x: 9, z: 4}, b1: {x: 3, z: -3}, b2: {x: -8, z: -2}, angle: 227.0, pow: 18, sx: 3, sy: -1 },
+        { name: "45 - 35 = 10 [짧은 뒤돌리기]", cue: {x: 5, z: 2}, b1: {x: -2, z: -5}, b2: {x: -13, z: 5}, angle: 223.5, pow: 14, sx: 1.5, sy: 0 },
+        { name: "65 - 15 = 50 [대형 횡단 샷]", cue: {x: 12, z: 5}, b1: {x: 6, z: -2}, b2: {x: 0, z: 5}, angle: 231.5, pow: 20, sx: 3, sy: 1 },
+        { name: "50 - 40 = 10 [깊은 코너 옆돌리기]", cue: {x: 6, z: 5}, b1: {x: -3, z: 2}, b2: {x: -13, z: 5}, angle: 196.0, pow: 15, sx: 2, sy: 0 }
     ],
     plus: [
-        { name: "20 + 20 = 40 [플러스 옆돌리기]", cue: {x: -8, z: -2}, b1: {x: -12, z: 2}, b2: {x: 5, z: 5}, pow: 15, sx: 2, sy: 0 },
-        { name: "30 + 10 = 40 [긴 수구 비껴치기]", cue: {x: -2, z: -3}, b1: {x: -8, z: 1}, b2: {x: 5, z: 5}, pow: 16, sx: 2.5, sy: 1 },
-        { name: "25 + 15 = 40 [중앙 플러스]", cue: {x: -5, z: -2}, b1: {x: -10, z: 0}, b2: {x: 5, z: 5}, pow: 15, sx: 2, sy: 0 },
-        { name: "20 + 30 = 50 [길게 세워치기]", cue: {x: -8, z: -1}, b1: {x: -12, z: 3}, b2: {x: 10, z: 5}, pow: 17, sx: 3, sy: -1 },
-        { name: "15 + 25 = 40 [짧은 수구 빗겨치기]", cue: {x: -11, z: -2}, b1: {x: -13, z: 2}, b2: {x: 5, z: 5}, pow: 14, sx: 2, sy: 0 },
-        { name: "30 + 20 = 50 [대각선 플러스]", cue: {x: -2, z: -4}, b1: {x: -7, z: 2}, b2: {x: 10, z: 5}, pow: 18, sx: 3, sy: 0 },
-        { name: "35 + 15 = 50 [코너 깊은 옆돌리기]", cue: {x: 1, z: -4}, b1: {x: -6, z: 1}, b2: {x: 10, z: 5}, pow: 18, sx: 3, sy: 0 },
-        { name: "10 + 30 = 40 [극단 짧은 세워치기]", cue: {x: -12, z: -2}, b1: {x: -13, z: 1}, b2: {x: 5, z: 5}, pow: 14, sx: 2, sy: -1 },
-        { name: "25 + 25 = 50 [표준 대회전 플러스]", cue: {x: -5, z: -3}, b1: {x: -11, z: 2}, b2: {x: 10, z: 5}, pow: 17, sx: 2.5, sy: 0 },
-        { name: "20 + 15 = 35 [짧은 반사 각]", cue: {x: -8, z: -2}, b1: {x: -11, z: 0}, b2: {x: 2, z: 5}, pow: 15, sx: 2, sy: 0 }
+        { name: "20 + 20 = 40 [플러스 옆돌리기]", cue: {x: -8, z: -2}, b1: {x: -12, z: 2}, b2: {x: 5, z: 5}, angle: 145.0, pow: 15, sx: 2, sy: 0 },
+        { name: "30 + 10 = 40 [긴 수구 비껴치기]", cue: {x: -2, z: -3}, b1: {x: -8, z: 1}, b2: {x: 5, z: 5}, angle: 150.5, pow: 16, sx: 2.5, sy: 1 },
+        { name: "25 + 15 = 40 [중앙 플러스]", cue: {x: -5, z: -2}, b1: {x: -10, z: 0}, b2: {x: 5, z: 5}, angle: 162.0, pow: 15, sx: 2, sy: 0 },
+        { name: "20 + 30 = 50 [길게 세워치기]", cue: {x: -8, z: -1}, b1: {x: -12, z: 3}, b2: {x: 10, z: 5}, angle: 138.0, pow: 17, sx: 3, sy: -1 },
+        { name: "15 + 25 = 40 [짧은 수구 빗겨치기]", cue: {x: -11, z: -2}, b1: {x: -13, z: 2}, b2: {x: 5, z: 5}, angle: 122.0, pow: 14, sx: 2, sy: 0 },
+        { name: "30 + 20 = 50 [대각선 플러스]", cue: {x: -2, z: -4}, b1: {x: -7, z: 2}, b2: {x: 10, z: 5}, angle: 133.0, pow: 18, sx: 3, sy: 0 },
+        { name: "35 + 15 = 50 [코너 깊은 옆돌리기]", cue: {x: 1, z: -4}, b1: {x: -6, z: 1}, b2: {x: 10, z: 5}, angle: 147.0, pow: 18, sx: 3, sy: 0 },
+        { name: "10 + 30 = 40 [극단 짧은 세워치기]", cue: {x: -12, z: -2}, b1: {x: -13, z: 1}, b2: {x: 5, z: 5}, angle: 111.0, pow: 14, sx: 2, sy: -1 },
+        { name: "25 + 25 = 50 [표준 대회전 플러스]", cue: {x: -5, z: -3}, b1: {x: -11, z: 2}, b2: {x: 10, z: 5}, angle: 142.5, pow: 17, sx: 2.5, sy: 0 },
+        { name: "20 + 15 = 35 [짧은 반사 각]", cue: {x: -8, z: -2}, b1: {x: -11, z: 0}, b2: {x: 2, z: 5}, angle: 152.0, pow: 15, sx: 2, sy: 0 }
     ]
 };
-
-// --- 자동 득점 경로 탐색(Auto-Solver) 함수 ---
-function simulateHitDistance(rad, preset) {
-    let vStates = [
-        {id: 0, x: preset.cue.x, z: preset.cue.z, vx: Math.cos(rad) * preset.pow * 0.08, vz: Math.sin(rad) * preset.pow * 0.08, r: tableSpec.ballR, spinX: preset.sx, spinY: preset.sy},
-        {id: 1, x: preset.b1.x, z: preset.b1.z, vx: 0, vz: 0, r: tableSpec.ballR},
-        {id: 2, x: preset.b2.x, z: preset.b2.z, vx: 0, vz: 0, r: tableSpec.ballR}
-    ];
-    let minDistToTarget = Infinity;
-    let cushionHits = 0;
-    let firstHit = -1;
-    let hitTarget = false;
-
-    const SUB_STEPS = 4;
-    for(let f=0; f<300; f++) {
-        let isMoving = false;
-        for(let step=0; step<SUB_STEPS; step++) {
-            vStates.forEach(b => {
-                if (Math.hypot(b.vx, b.vz) > 0.001) {
-                    isMoving = true;
-                    b.x += b.vx / SUB_STEPS;
-                    b.z += b.vz / SUB_STEPS;
-                    b.vx *= Math.pow(tableSpec.friction, 1 / SUB_STEPS);
-                    b.vz *= Math.pow(tableSpec.friction, 1 / SUB_STEPS);
-                } else { b.vx = 0; b.vz = 0; }
-            });
-            for(let i=0; i<vStates.length; i++) {
-                for(let j=i+1; j<vStates.length; j++) {
-                    let b1 = vStates[i], b2 = vStates[j];
-                    let cdx = b2.x - b1.x, cdz = b2.z - b1.z;
-                    let dist = Math.hypot(cdx, cdz);
-                    let minReq = b1.r + b2.r;
-                    if (dist < minReq) {
-                        if (dist === 0) { cdx = 0.001; cdz = 0; dist = 0.001; }
-                        
-                        if (firstHit === -1 && (b1.id === 0 || b2.id === 0)) {
-                            firstHit = (b1.id === 0) ? b2.id : b1.id;
-                        }
-                        if ((b1.id === 0 && b2.id === 2) || (b2.id === 0 && b1.id === 2)) {
-                            hitTarget = true;
-                        }
-
-                        let angle = Math.atan2(cdz, cdx);
-                        let sin = Math.sin(angle), cos = Math.cos(angle);
-                        let vx1 = b1.vx * cos + b1.vz * sin;
-                        let vz1 = b1.vz * cos - b1.vx * sin;
-                        let vx2 = b2.vx * cos + b2.vz * sin;
-                        let vz2 = b2.vz * cos - b2.vx * sin;
-                        let newVx1 = vx2, newVz1 = vz1, newVx2 = vx1, newVz2 = vz2;
-                        if (b1.id === 0 && b1.spinY !== undefined) newVx1 += b1.spinY * 0.12 * Math.abs(vx1);
-                        b1.vx = newVx1 * cos - newVz1 * sin;
-                        b1.vz = newVz1 * cos + newVx1 * sin;
-                        b2.vx = newVx2 * cos - newVz2 * sin;
-                        b2.vz = newVz2 * cos + newVx2 * sin;
-                        let overlap = minReq - dist;
-                        b1.x -= Math.cos(angle) * overlap / 2;
-                        b1.z -= Math.sin(angle) * overlap / 2;
-                        b2.x += Math.cos(angle) * overlap / 2;
-                        b2.z += Math.sin(angle) * overlap / 2;
-                    }
-                }
-            }
-            const wB = tableSpec.width/2 - tableSpec.ballR;
-            const hB = tableSpec.height/2 - tableSpec.ballR;
-            vStates.forEach(b => {
-                let hitCushion = false, dirX = 0, dirZ = 0;
-                if (b.x > wB) { b.x = wB; if (b.vx > 0) { b.vx = -b.vx * tableSpec.cushionElasticity; hitCushion = true; dirX = -1; } }
-                else if (b.x < -wB) { b.x = -wB; if (b.vx < 0) { b.vx = -b.vx * tableSpec.cushionElasticity; hitCushion = true; dirX = 1; } }
-                if (b.z > hB) { b.z = hB; if (b.vz > 0) { b.vz = -b.vz * tableSpec.cushionElasticity; hitCushion = true; dirZ = -1; } }
-                else if (b.z < -hB) { b.z = -hB; if (b.vz < 0) { b.vz = -b.vz * tableSpec.cushionElasticity; hitCushion = true; dirZ = 1; } }
-                if (hitCushion && b.id === 0) {
-                    if (!hitTarget) cushionHits++;
-                    if (b.spinX !== undefined) {
-                        let spinEffect = b.spinX * 0.06;
-                        if (dirX !== 0) b.vz += dirX * spinEffect * Math.abs(b.vx);
-                        else if (dirZ !== 0) b.vx -= dirZ * spinEffect * Math.abs(b.vz);
-                    }
-                }
-            });
-        }
-        let curDist = Math.hypot(vStates[2].x - vStates[0].x, vStates[2].z - vStates[0].z);
-        if (curDist < minDistToTarget) minDistToTarget = curDist;
-        if (!isMoving) break;
-    }
-
-    if (firstHit !== 1) return Infinity; // 1적구를 먼저 맞추지 않으면 무효
-    if (cushionHits < 3) minDistToTarget += 1000; // 3쿠션 미달 시 패널티 부과
-    return minDistToTarget;
-}
-
-function findPerfectAngle(preset) {
-    let dx = preset.b1.x - preset.cue.x;
-    let dz = preset.b1.z - preset.cue.z;
-    let baseAngle = Math.atan2(dz, dx) * 180 / Math.PI;
-
-    let bestAngle = baseAngle;
-    let minDistance = Infinity;
-
-    // 1. 넓은 범위의 각도를 빠르게 스캔 (-15도 ~ +15도)
-    for (let ang = -15; ang <= 15; ang += 0.5) {
-        let testRad = (baseAngle + ang) * Math.PI / 180;
-        let dist = simulateHitDistance(testRad, preset);
-        if (dist < minDistance) {
-            minDistance = dist;
-            bestAngle = baseAngle + ang;
-        }
-    }
-
-    // 2. 가장 근접한 각도 근처를 초정밀 스캔 (-1.0도 ~ +1.0도)
-    let fineBest = bestAngle;
-    let fineMinDist = Infinity;
-    for (let ang = -1.0; ang <= 1.0; ang += 0.05) {
-        let testRad = (bestAngle + ang) * Math.PI / 180;
-        let dist = simulateHitDistance(testRad, preset);
-        if (dist < fineMinDist) {
-            fineMinDist = dist;
-            fineBest = bestAngle + ang;
-        }
-    }
-
-    return (fineBest + 360) % 360;
-}
-// ---------------------------------------------
 
 function createTextSprite(message, color) {
     const canvas = document.createElement('canvas');
@@ -546,15 +424,13 @@ function loadSelectedPreset() {
 
     savedBallPositions = balls.map(b => ({ x: b.position.x, z: b.position.z }));
 
-    // Auto-Solver를 통한 100% 모범 답안 각도 추출
-    let finalAngle = findPerfectAngle(p);
-
-    document.getElementById('aimAngle').value = finalAngle.toFixed(1);
+    // 직접 하드코딩된 완벽한 모범 각도 세팅
+    document.getElementById('aimAngle').value = p.angle.toFixed(1);
     document.getElementById('power').value = p.pow;
     document.getElementById('spinX').value = p.sx;
     document.getElementById('spinY').value = p.sy;
 
-    updateAngleLabel(finalAngle.toFixed(1));
+    updateAngleLabel(p.angle.toFixed(1));
     updatePowerLabel(p.pow);
     updateSpinXLabel(p.sx);
     updateSpinYLabel(p.sy);
@@ -570,10 +446,9 @@ function loadSelectedPreset() {
     let sxTxt = p.sx > 0 ? `우 ${p.sx} Tip` : (p.sx < 0 ? `좌 ${Math.abs(p.sx)} Tip` : `무회전`);
     let syTxt = p.sy > 0 ? `상단 ${p.sy} Tip` : (p.sy < 0 ? `하단 ${Math.abs(p.sy)} Tip` : `중앙`);
     
-    // 모범 답안 제공으로 안내 문구 수정 완료
     document.getElementById('preset-guide').innerHTML = 
-        `💡 <b>설정 완료:</b> 당점 [${sxTxt} / ${syTxt}], 파워 [${p.pow}m/s]<br>` +
-        `<span class="preset-hint">🎯 <b>(시뮬레이터가 완벽한 득점 경로 및 두께를 자동으로 계산하여 세팅했습니다. 샷 실행을 눌러 경로를 확인하세요!)</b></span>`;
+        `💡 <b>모범 답안:</b> 당점 [${sxTxt} / ${syTxt}], 파워 [${p.pow}m/s]<br>` +
+        `<span class="preset-hint">🎯 <b>(지정된 1쿠션 지점으로 향하는 기본 세팅입니다. 미세조정 버튼으로 완벽한 득점 경로를 맞춰보세요!)</b></span>`;
 
     drawSystemLabels(mode);
 }

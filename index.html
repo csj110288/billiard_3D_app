@@ -36,10 +36,19 @@
             transition: background 0.2s, color 0.2s;
         }
         #sidebarToggleBtn:hover { background: #2a2a2a; color: #f1c40f; }
-
         #sidebar.collapsed { transform: translateX(100%); }
 
-        /* 플로팅 퀵 버튼 영역 (버튼 크기 3/4로 축소) */
+        /* 학습 가이드 중앙 상단 HUD */
+        #preset-title-display {
+            position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+            background: rgba(0,0,0,0.85); border: 1px solid #f1c40f; border-radius: 8px;
+            padding: 10px 20px; text-align: center; z-index: 30; display: none; pointer-events: none;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.6); min-width: 300px;
+        }
+        #preset-name { color: #f1c40f; font-weight: bold; font-size: 15px; margin-bottom: 4px; }
+        #preset-guide { color: #2ecc71; font-size: 13px; font-weight: bold; }
+
+        /* 플로팅 퀵 버튼 영역 */
         #floating-quick-bar {
             position: absolute; bottom: 20px; right: 20px;
             display: none; flex-wrap: wrap; justify-content: flex-end; gap: 6px; z-index: 15;
@@ -52,15 +61,19 @@
             font-weight: bold; font-size: 11px; cursor: pointer; transition: 0.2s;
         }
         .btn-float-shoot { background: #27ae60; color: #fff; width: 100%; margin-bottom: 4px; padding: 8px !important; font-size: 13px !important;}
-        .btn-float-open { background: #f39c12; color: #fff; }
         .btn-float-replay { background: #8e44ad; color: #fff; }
         .btn-float-replay:disabled { opacity: 0.4; cursor: not-allowed; }
         .btn-float-reset { background: #e67e22; color: #fff; }
         .btn-float-repeat { background: #2980b9; color: #fff; }
+        
+        /* 설정 버튼 데스크탑 숨김 처리 */
+        .btn-float-open { background: #f39c12; color: #fff; display: none; }
 
         @media (max-width: 768px) {
             #sidebar { width: 300px; }
             #floating-quick-bar { bottom: 15px; right: 15px; }
+            .btn-float-open { display: inline-block; } /* 모바일에서만 설정 버튼 표시 */
+            #preset-title-display { width: 90%; top: 10px; padding: 8px 12px; }
         }
 
         h2 { font-size: 18px; color: #2ecc71; border-bottom: 2px solid #2ecc71; padding-bottom: 5px; }
@@ -130,6 +143,11 @@
     <div id="viewport">
         <canvas id="canvas3d"></canvas>
 
+        <div id="preset-title-display">
+            <div id="preset-name">시스템 예제</div>
+            <div id="preset-guide">💡 권장 설정 가이드</div>
+        </div>
+
         <div id="hud-overlay">
             <div class="hud-header">
                 <h3 id="sysTitle">파이브 앤 하프 시스템</h3>
@@ -140,8 +158,7 @@
                 <p class="guide-text">
                     👉 <b>드래그 (빈 공간)</b>: 당구대 시점 회전<br>
                     🎱 <b>공 클릭 후 드래그</b>: 공 수동 위치 이동<br>
-                    🔴 <b>당점 창</b>: 클릭/드래그로 스핀 정밀 조절<br>
-                    🔢 <b>포인트 숫자</b>: 당구대 쿠션에 시스템 숫자 표기
+                    📚 <b>시스템 연습</b>: 정답 가이드 제공
                 </p>
             </div>
         </div>
@@ -183,7 +200,7 @@
             </div>
 
             <div class="group">
-                <label for="systemMode">적용 시스템 & 포인트 라벨</label>
+                <label for="systemMode">적용 시스템</label>
                 <select id="systemMode" onchange="updateSystemHUD()">
                     <option value="fiveHalf">파이브 앤 하프 시스템</option>
                     <option value="plus">플러스 시스템</option>
@@ -193,9 +210,9 @@
             </div>
 
             <div class="group" style="background: #222; padding: 8px; border-radius: 4px; border: 1px solid #444;">
-                <label for="presetSelect">📚 시스템 연습 배치 (10개 예제):</label>
+                <label for="presetSelect">📚 시스템 연습 배치 (가이드 제공):</label>
                 <select id="presetSelect" onchange="loadSelectedPreset()">
-                    <option value="">-- 연습 배치 선택 --</option>
+                    <option value="">-- 연습 배치 선택 (랜덤 모드) --</option>
                 </select>
             </div>
 
@@ -274,10 +291,7 @@ let tableSpec = { width: 28.44, height: 14.22, ballR: 0.3075, friction: 0.991, c
 let isSimulating = false;
 let raycaster = new THREE.Raycaster();
 let mouse = new THREE.Vector2();
-
-let pointerStartX = 0;
-let pointerStartY = 0;
-
+let pointerStartX = 0; let pointerStartY = 0;
 let audioCtx = null;
 let realBallStates = [];
 
@@ -325,7 +339,8 @@ function createTextSprite(message, color) {
     const texture = new THREE.CanvasTexture(canvas);
     const spriteMaterial = new THREE.SpriteMaterial({ map: texture, depthTest: false });
     const sprite = new THREE.Sprite(spriteMaterial);
-    sprite.scale.set(3.5, 3.5, 1);
+    // 크기를 기존 3.5에서 1.75(1/2 크기)로 대폭 축소
+    sprite.scale.set(1.75, 1.75, 1);
     return sprite;
 }
 
@@ -338,34 +353,34 @@ function drawSystemLabels(mode) {
     const h2 = tableSpec.height / 2;
     const dw = tableSpec.width / 8;
     const dh = tableSpec.height / 4;
-    const y = 0.8;
+    const y = 0.5; // 포인트 텍스트 높이 살짝 낮춤
 
     let labels = [];
 
     if(mode === 'fiveHalf') {
-        for(let i=1; i<=7; i++) labels.push({t: i*10, x: w2 - dw*i, z: -h2 - 1.8, c: "#f1c40f"}); // 1C Yellow
-        labels.push({t: "50", x: w2, z: h2 + 1.8, c: "#ffffff"}); // Cue White
-        for(let i=1; i<=7; i++) labels.push({t: 50 - i*5, x: w2 - dw*i, z: h2 + 1.8, c: "#ffffff"});
-        labels.push({t: "60", x: w2 + 1.8, z: h2 - dh*1, c: "#ffffff"});
-        labels.push({t: "70", x: w2 + 1.8, z: h2 - dh*2, c: "#ffffff"});
-        labels.push({t: "90", x: w2 + 1.8, z: h2 - dh*3, c: "#ffffff"});
-        labels.push({t: "10", x: -w2 - 1.8, z: -h2 + dh*1, c: "#2ecc71"}); // 3C Green
-        labels.push({t: "20", x: -w2 - 1.8, z: -h2 + dh*2, c: "#2ecc71"});
-        labels.push({t: "30", x: -w2 - 1.8, z: -h2 + dh*3, c: "#2ecc71"});
-        labels.push({t: "40", x: -w2, z: h2 + 1.8, c: "#2ecc71"});
-        labels.push({t: "50", x: -w2 + dw*1, z: h2 + 1.8, c: "#2ecc71"});
-        labels.push({t: "60", x: -w2 + dw*2, z: h2 + 1.8, c: "#2ecc71"});
-        labels.push({t: "70", x: -w2 + dw*3, z: h2 + 1.8, c: "#2ecc71"});
+        for(let i=1; i<=7; i++) labels.push({t: i*10, x: w2 - dw*i, z: -h2 - 1.2, c: "#f1c40f"}); // 1C
+        labels.push({t: "50", x: w2, z: h2 + 1.2, c: "#ffffff"}); 
+        for(let i=1; i<=7; i++) labels.push({t: 50 - i*5, x: w2 - dw*i, z: h2 + 1.2, c: "#ffffff"});
+        labels.push({t: "60", x: w2 + 1.2, z: h2 - dh*1, c: "#ffffff"});
+        labels.push({t: "70", x: w2 + 1.2, z: h2 - dh*2, c: "#ffffff"});
+        labels.push({t: "90", x: w2 + 1.2, z: h2 - dh*3, c: "#ffffff"});
+        labels.push({t: "10", x: -w2 - 1.2, z: -h2 + dh*1, c: "#2ecc71"}); // 3C
+        labels.push({t: "20", x: -w2 - 1.2, z: -h2 + dh*2, c: "#2ecc71"});
+        labels.push({t: "30", x: -w2 - 1.2, z: -h2 + dh*3, c: "#2ecc71"});
+        labels.push({t: "40", x: -w2, z: h2 + 1.2, c: "#2ecc71"});
+        labels.push({t: "50", x: -w2 + dw*1, z: h2 + 1.2, c: "#2ecc71"});
+        labels.push({t: "60", x: -w2 + dw*2, z: h2 + 1.2, c: "#2ecc71"});
+        labels.push({t: "70", x: -w2 + dw*3, z: h2 + 1.2, c: "#2ecc71"});
     } else if (mode === 'plus') {
-        for(let i=1; i<=7; i++) labels.push({t: 10 + i*5, x: -w2 + dw*i, z: h2 + 1.8, c: "#ffffff"}); // Cue White
-        labels.push({t: "10", x: -w2 - 1.8, z: h2 - dh*1, c: "#f1c40f"}); // 1C Yellow
-        labels.push({t: "20", x: -w2 - 1.8, z: h2 - dh*2, c: "#f1c40f"});
-        labels.push({t: "30", x: -w2 - 1.8, z: h2 - dh*3, c: "#f1c40f"});
-        labels.push({t: "30", x: -w2 + dw*2, z: -h2 - 1.8, c: "#2ecc71"}); // 3C Green
-        labels.push({t: "40", x: -w2 + dw*4, z: -h2 - 1.8, c: "#2ecc71"});
-        labels.push({t: "50", x: -w2 + dw*6, z: -h2 - 1.8, c: "#2ecc71"});
-        labels.push({t: "60", x: w2 + 1.8, z: -h2 + dh*1, c: "#2ecc71"});
-        labels.push({t: "70", x: w2 + 1.8, z: -h2 + dh*2, c: "#2ecc71"});
+        for(let i=1; i<=7; i++) labels.push({t: 10 + i*5, x: -w2 + dw*i, z: h2 + 1.2, c: "#ffffff"}); 
+        labels.push({t: "10", x: -w2 - 1.2, z: h2 - dh*1, c: "#f1c40f"}); 
+        labels.push({t: "20", x: -w2 - 1.2, z: h2 - dh*2, c: "#f1c40f"});
+        labels.push({t: "30", x: -w2 - 1.2, z: h2 - dh*3, c: "#f1c40f"});
+        labels.push({t: "30", x: -w2 + dw*2, z: -h2 - 1.2, c: "#2ecc71"}); 
+        labels.push({t: "40", x: -w2 + dw*4, z: -h2 - 1.2, c: "#2ecc71"});
+        labels.push({t: "50", x: -w2 + dw*6, z: -h2 - 1.2, c: "#2ecc71"});
+        labels.push({t: "60", x: w2 + 1.2, z: -h2 + dh*1, c: "#2ecc71"});
+        labels.push({t: "70", x: w2 + 1.2, z: -h2 + dh*2, c: "#2ecc71"});
     }
 
     labels.forEach(lb => {
@@ -379,7 +394,7 @@ function drawSystemLabels(mode) {
 function populatePresetSelect() {
     const mode = document.getElementById('systemMode').value;
     const select = document.getElementById('presetSelect');
-    select.innerHTML = '<option value="">-- 연습 배치 선택 (10개 예제) --</option>';
+    select.innerHTML = '<option value="">-- 연습 배치 선택 (랜덤 모드) --</option>';
 
     const presets = SYSTEM_PRESETS[mode] || SYSTEM_PRESETS.fiveHalf;
     presets.forEach((p, idx) => {
@@ -394,7 +409,12 @@ function loadSelectedPreset() {
     const mode = document.getElementById('systemMode').value;
     const select = document.getElementById('presetSelect');
     const idx = select.value;
-    if (idx === "") return;
+    
+    // 빈 값(랜덤 모드) 선택 시 라벨 지우고 리셋
+    if (idx === "") {
+        resetBalls(true);
+        return;
+    }
 
     const presets = SYSTEM_PRESETS[mode] || SYSTEM_PRESETS.fiveHalf;
     const p = presets[idx];
@@ -417,6 +437,18 @@ function loadSelectedPreset() {
     updateCueTipFromSliders();
     syncRealStatesFromMeshes();
     updateAimLine();
+
+    // 학습자 가이드 텍스트 업데이트
+    document.getElementById('preset-title-display').style.display = 'block';
+    let sysName = (mode === 'fiveHalf') ? '파이브 앤 하프' : '플러스 시스템';
+    document.getElementById('preset-name').innerText = `[${sysName}] ${p.name.split('(')[0]}`; // 예제 이름 간략화
+    
+    let sxTxt = p.sx > 0 ? `우 ${p.sx} Tip` : (p.sx < 0 ? `좌 ${Math.abs(p.sx)} Tip` : `무회전`);
+    let syTxt = p.sy > 0 ? `상단 ${p.sy} Tip` : (p.sy < 0 ? `하단 ${Math.abs(p.sy)} Tip` : `중앙`);
+    document.getElementById('preset-guide').innerText = `💡 권장: 당점 [${sxTxt} / ${syTxt}], 속도 [${p.pow}m/s]`;
+
+    // 시스템 선택시에만 포인트 숫자 그리기
+    drawSystemLabels(mode);
 }
 
 function setup2DCueBallWidget() {
@@ -962,6 +994,11 @@ function resetBalls(isRandom = false) {
     let fbReplay = document.getElementById('btnFloatReplay');
     if(fbReplay) fbReplay.disabled = true;
     
+    // 연습 모드 해제 시 숫자 라벨과 가이드 HUD를 숨김
+    if(systemLabelsGroup) { scene.remove(systemLabelsGroup); systemLabelsGroup = null; }
+    document.getElementById('preset-title-display').style.display = 'none';
+    document.getElementById('presetSelect').value = ""; // 선택창 초기화
+
     clearTrails();
     resetShotScoring();
 
@@ -1021,7 +1058,6 @@ function changeGameMode() {
     buildTable();
     createBalls();
     resetShotScoring();
-    drawSystemLabels(document.getElementById('systemMode').value);
 }
 
 function changeTableType() {
@@ -1032,7 +1068,6 @@ function changeTableType() {
         : { width: 24.4, height: 12.2, ballR: ballR, friction: 0.984, cushionElasticity: 0.73 };
     buildTable(); 
     createBalls();
-    drawSystemLabels(document.getElementById('systemMode').value);
 }
 
 function updateAngleLabel(val) {
@@ -1493,7 +1528,10 @@ function updateSystemHUD() {
     else { t.innerText = "기본 가이드 모드"; f.innerHTML = '공식: <span class="formula">입사각 = 반사각</span>'; }
     
     populatePresetSelect();
-    drawSystemLabels(mode);
+    
+    // 시스템 변경 시 3D 라벨 지우기 (예제 선택 시에만 보이게 됨)
+    if(systemLabelsGroup) { scene.remove(systemLabelsGroup); systemLabelsGroup = null; }
+    document.getElementById('preset-title-display').style.display = 'none';
 }
 
 function updatePowerLabel(v) {

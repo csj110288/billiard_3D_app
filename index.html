@@ -43,11 +43,11 @@
             position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,0.85); border: 1px solid #f1c40f; border-radius: 8px;
             padding: 10px 20px; text-align: center; z-index: 30; display: none; pointer-events: none;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.6); min-width: 340px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.6); min-width: 360px;
         }
         #preset-name { color: #f1c40f; font-weight: bold; font-size: 15px; margin-bottom: 6px; }
         #preset-guide { color: #2ecc71; font-size: 13px; font-weight: bold; line-height: 1.4; }
-        .preset-hint { font-size: 11px; color: #aaa; font-weight: normal; margin-top: 4px; display: block; }
+        .preset-hint { font-size: 12px; color: #ddd; font-weight: normal; margin-top: 6px; display: block; word-break: keep-all;}
 
         /* 플로팅 퀵 버튼 영역 */
         #floating-quick-bar {
@@ -144,7 +144,7 @@
 
         <div id="preset-title-display">
             <div id="preset-name">시스템 예제</div>
-            <div id="preset-guide">💡 권장 설정 가이드</div>
+            <div id="preset-guide">💡 세팅 완료 가이드</div>
         </div>
 
         <div id="hud-overlay">
@@ -209,7 +209,7 @@
             </div>
 
             <div class="group" style="background: #222; padding: 8px; border-radius: 4px; border: 1px solid #444;">
-                <label for="presetSelect">📚 시스템 연습 배치 (볼퍼스트):</label>
+                <label for="presetSelect">📚 시스템 연습 배치 (모범 답안):</label>
                 <select id="presetSelect" onchange="loadSelectedPreset()">
                     <option value="">-- 연습 배치 선택 (랜덤 모드) --</option>
                 </select>
@@ -294,7 +294,6 @@ let pointerStartX = 0; let pointerStartY = 0;
 let audioCtx = null;
 let realBallStates = [];
 
-// 볼 퍼스트(Ball-First) 실전 겨냥용 오프셋이 적용된 예제 데이터
 const SYSTEM_PRESETS = {
     fiveHalf: [
         { name: "50 - 30 = 20 [뒤돌리기]", cue: {x: 8, z: 2}, b1: {x: 5, z: -3}, b2: {x: -12, z: 2}, offset: 1.8, pow: 16, sx: 2, sy: 0 },
@@ -422,7 +421,6 @@ function loadSelectedPreset() {
     objectBall1.position.set(p.b1.x, tableSpec.ballR, p.b1.z);
     objectBall2.position.set(p.b2.x, tableSpec.ballR, p.b2.z);
 
-    // ★ 버그 수정: 시스템 예제를 선택했을 때 그 위치를 메모리에 즉시 기억시켜둠!
     savedBallPositions = balls.map(b => ({ x: b.position.x, z: b.position.z }));
 
     let dx = p.b1.x - p.cue.x;
@@ -451,9 +449,10 @@ function loadSelectedPreset() {
     let sxTxt = p.sx > 0 ? `우 ${p.sx} Tip` : (p.sx < 0 ? `좌 ${Math.abs(p.sx)} Tip` : `무회전`);
     let syTxt = p.sy > 0 ? `상단 ${p.sy} Tip` : (p.sy < 0 ? `하단 ${Math.abs(p.sy)} Tip` : `중앙`);
     
+    // 안내 문구 수정: 자동으로 득점 가능한 완벽한 세팅이 맞춰졌음을 강조
     document.getElementById('preset-guide').innerHTML = 
-        `💡 권장: 당점 [${sxTxt} / ${syTxt}], 속도 [${p.pow}m/s]` +
-        `<span class="preset-hint">(버튼으로 각도를 0.1°씩 미세 조정하며 완벽한 1쿠션 득점 경로를 찾아보세요!)</span>`;
+        `💡 <b>설정 완료:</b> 당점 [${sxTxt} / ${syTxt}], 파워 [${p.pow}m/s]<br>` +
+        `<span class="preset-hint">🎯 <b>(시스템 계산에 따라 득점 가능한 1쿠션 지점으로 자동 겨냥되어 있습니다. 샷 실행을 눌러 경로를 확인하세요!)</b></span>`;
 
     drawSystemLabels(mode);
 }
@@ -1001,8 +1000,6 @@ function resetBalls(isRandom = false) {
     let fbReplay = document.getElementById('btnFloatReplay');
     if(fbReplay) fbReplay.disabled = true;
     
-    // ★ 버그 수정: 랜덤 배치(새 배치)일 때만 시스템 라벨과 UI를 지움
-    // 동일 배치 반복(isRandom=false)일 때는 기존 UI를 그대로 살려둠!
     if (isRandom) {
         if(systemLabelsGroup) { scene.remove(systemLabelsGroup); systemLabelsGroup = null; }
         document.getElementById('preset-title-display').style.display = 'none';

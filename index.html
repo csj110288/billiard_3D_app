@@ -16,7 +16,7 @@
         #sidebar { 
             position: absolute; right: 0; top: 0; bottom: 0;
             width: 340px; background: #1e1e1e; border-left: 1px solid #333; 
-            z-index: 40; transition: transform 0.3s ease; /* 최상위로 올림 */
+            z-index: 40; transition: transform 0.3s ease; 
         }
 
         #sidebar-content {
@@ -32,7 +32,7 @@
             border-radius: 8px 0 0 8px; color: #2ecc71;
             font-size: 16px; font-weight: bold; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
-            z-index: 45; box-shadow: -3px 0 6px rgba(0,0,0,0.5); /* 최상위로 올림 */
+            z-index: 45; box-shadow: -3px 0 6px rgba(0,0,0,0.5); 
             transition: background 0.2s, color 0.2s;
         }
         #sidebarToggleBtn:hover { background: #2a2a2a; color: #f1c40f; }
@@ -43,10 +43,11 @@
             position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
             background: rgba(0,0,0,0.85); border: 1px solid #f1c40f; border-radius: 8px;
             padding: 10px 20px; text-align: center; z-index: 30; display: none; pointer-events: none;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.6); min-width: 300px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.6); min-width: 340px;
         }
-        #preset-name { color: #f1c40f; font-weight: bold; font-size: 15px; margin-bottom: 4px; }
-        #preset-guide { color: #2ecc71; font-size: 13px; font-weight: bold; }
+        #preset-name { color: #f1c40f; font-weight: bold; font-size: 15px; margin-bottom: 6px; }
+        #preset-guide { color: #2ecc71; font-size: 13px; font-weight: bold; line-height: 1.4; }
+        .preset-hint { font-size: 11px; color: #aaa; font-weight: normal; margin-top: 4px; display: block; }
 
         /* 플로팅 퀵 버튼 영역 */
         #floating-quick-bar {
@@ -66,7 +67,6 @@
         .btn-float-reset { background: #e67e22; color: #fff; }
         .btn-float-repeat { background: #2980b9; color: #fff; }
         
-        /* 설정 버튼 데스크탑 숨김 처리 */
         .btn-float-open { background: #f39c12; color: #fff; display: none; }
 
         @media (max-width: 768px) {
@@ -84,7 +84,6 @@
         .thick-disp { font-size: 12px; color: #f1c40f; font-weight: bold; text-align: right; }
         .score-disp { font-size: 13px; font-weight: bold; text-align: center; padding: 6px; border-radius: 4px; background: #252525; border: 1px solid #444;}
 
-        /* 2D 수구 당점 위젯 */
         #cueBallWidget {
             width: 90px; height: 90px; border-radius: 50%;
             background: radial-gradient(circle at 35% 35%, #ffffff, #bbb, #777);
@@ -210,7 +209,7 @@
             </div>
 
             <div class="group" style="background: #222; padding: 8px; border-radius: 4px; border: 1px solid #444;">
-                <label for="presetSelect">📚 시스템 연습 배치 (가이드 제공):</label>
+                <label for="presetSelect">📚 시스템 연습 배치 (볼퍼스트):</label>
                 <select id="presetSelect" onchange="loadSelectedPreset()">
                     <option value="">-- 연습 배치 선택 (랜덤 모드) --</option>
                 </select>
@@ -239,7 +238,7 @@
             </div>
 
             <div class="group">
-                <label>조준 각도: <span id="angleVal" class="val-disp">35.0°</span></label>
+                <label>조준 각도 (미세조정): <span id="angleVal" class="val-disp">35.0°</span></label>
                 <input type="range" id="aimAngle" min="0" max="360" value="35.0" step="0.1" oninput="updateAngleLabel(this.value); updateAimLine();">
                 <div class="btn-group">
                     <button class="btn-fine" onclick="adjustAngle(-0.5)">◀ -0.5°</button>
@@ -295,30 +294,31 @@ let pointerStartX = 0; let pointerStartY = 0;
 let audioCtx = null;
 let realBallStates = [];
 
+// 볼 퍼스트(Ball-First) 실전 겨냥용 오프셋이 적용된 예제 데이터
 const SYSTEM_PRESETS = {
     fiveHalf: [
-        { name: "예제 1: 50 - 30 = 20 (기본 코너 돌리기)", cue: {x: 5, z: 5}, b1: {x: 0, z: -6.5}, b2: {x: -12, z: 2}, angle: 245, pow: 16, sx: 2, sy: 0 },
-        { name: "예제 2: 45 - 20 = 25 (짧은 비껴치기)", cue: {x: 2, z: 5}, b1: {x: -3, z: -6.5}, b2: {x: -10, z: -3}, angle: 252, pow: 15, sx: 2.5, sy: 0 },
-        { name: "예제 3: 60 - 20 = 40 (대각선 길게)", cue: {x: 10, z: 5}, b1: {x: -3, z: -6.5}, b2: {x: -5, z: 5}, angle: 230, pow: 18, sx: 3, sy: 0 },
-        { name: "예제 4: 40 - 20 = 20 (중앙 수구 코너)", cue: {x: -2, z: 5}, b1: {x: -6, z: -6.5}, b2: {x: -12, z: 2}, angle: 250, pow: 15, sx: 2, sy: 0 },
-        { name: "예제 5: 35 - 15 = 20 (짧은 각 진입)", cue: {x: -5, z: 5}, b1: {x: -8, z: -6.5}, b2: {x: -12, z: 2}, angle: 255, pow: 14, sx: 2, sy: 0 },
-        { name: "예제 6: 50 - 20 = 30 (긴 길게 뽑기)", cue: {x: 5, z: 5}, b1: {x: -3, z: -6.5}, b2: {x: -8, z: -2}, angle: 240, pow: 17, sx: 3, sy: 0 },
-        { name: "예제 7: 55 - 25 = 30 (대대 대회전 각)", cue: {x: 8, z: 5}, b1: {x: -5, z: -6.5}, b2: {x: -8, z: -2}, angle: 238, pow: 18, sx: 3, sy: 0 },
-        { name: "예제 8: 45 - 35 = 10 (초짧은 1쿠션)", cue: {x: 2, z: 5}, b1: {x: -10, z: -6.5}, b2: {x: -13, z: 5}, angle: 260, pow: 14, sx: 1.5, sy: 0 },
-        { name: "예제 9: 65 - 15 = 50 (대형 횡단/길게)", cue: {x: 12, z: 5}, b1: {x: -1, z: -6.5}, b2: {x: 0, z: 5}, angle: 220, pow: 20, sx: 3, sy: 0 },
-        { name: "예제 10: 50 - 40 = 10 (깊은 코너 샷)", cue: {x: 5, z: 5}, b1: {x: -11, z: -6.5}, b2: {x: -13, z: 5}, angle: 265, pow: 15, sx: 2, sy: 0 }
+        { name: "50 - 30 = 20 [뒤돌리기]", cue: {x: 8, z: 2}, b1: {x: 5, z: -3}, b2: {x: -12, z: 2}, offset: 1.8, pow: 16, sx: 2, sy: 0 },
+        { name: "45 - 20 = 25 [옆돌리기]", cue: {x: 4, z: 5}, b1: {x: -2, z: 0}, b2: {x: -10, z: -4}, offset: -1.5, pow: 15, sx: 2.5, sy: 1 },
+        { name: "60 - 20 = 40 [길게 뒤돌리기]", cue: {x: 10, z: 3}, b1: {x: 5, z: -2}, b2: {x: -5, z: 5}, offset: 2.0, pow: 18, sx: 3, sy: 0 },
+        { name: "40 - 20 = 20 [짧은 옆돌리기]", cue: {x: 0, z: 4}, b1: {x: -5, z: 0}, b2: {x: -12, z: 2}, offset: -1.6, pow: 15, sx: 2, sy: 0 },
+        { name: "35 - 15 = 20 [비껴치기]", cue: {x: -5, z: 3}, b1: {x: -8, z: -1}, b2: {x: -12, z: 2}, offset: 1.2, pow: 14, sx: 2, sy: 0 },
+        { name: "50 - 20 = 30 [대회전 뒤돌리기]", cue: {x: 7, z: 5}, b1: {x: 2, z: -4}, b2: {x: -8, z: -2}, offset: 1.5, pow: 19, sx: 3, sy: 0 },
+        { name: "55 - 25 = 30 [길게 세워치기]", cue: {x: 9, z: 4}, b1: {x: 3, z: -3}, b2: {x: -8, z: -2}, offset: 1.7, pow: 18, sx: 3, sy: -1 },
+        { name: "45 - 35 = 10 [짧은 뒤돌리기]", cue: {x: 5, z: 2}, b1: {x: -2, z: -5}, b2: {x: -13, z: 5}, offset: 2.2, pow: 14, sx: 1.5, sy: 0 },
+        { name: "65 - 15 = 50 [대형 횡단 샷]", cue: {x: 12, z: 5}, b1: {x: 6, z: -2}, b2: {x: 0, z: 5}, offset: 1.5, pow: 20, sx: 3, sy: 1 },
+        { name: "50 - 40 = 10 [깊은 코너 옆돌리기]", cue: {x: 6, z: 5}, b1: {x: -3, z: 2}, b2: {x: -13, z: 5}, offset: -1.8, pow: 15, sx: 2, sy: 0 }
     ],
     plus: [
-        { name: "예제 1: 20 + 20 = 40 (기본 플러스)", cue: {x: -8, z: -5}, b1: {x: -13, z: -2}, b2: {x: 5, z: 5}, angle: 160, pow: 15, sx: 2, sy: 0 },
-        { name: "예제 2: 30 + 10 = 40 (긴 수구 플러스)", cue: {x: -2, z: -5}, b1: {x: -13, z: 2}, b2: {x: 5, z: 5}, angle: 150, pow: 16, sx: 2.5, sy: 0 },
-        { name: "예제 3: 25 + 15 = 40 (중앙 플러스)", cue: {x: -5, z: -5}, b1: {x: -13, z: 0}, b2: {x: 5, z: 5}, angle: 155, pow: 15, sx: 2, sy: 0 },
-        { name: "예제 4: 20 + 30 = 50 (길게 코너 샷)", cue: {x: -8, z: -5}, b1: {x: -13, z: -4}, b2: {x: 10, z: 5}, angle: 165, pow: 17, sx: 3, sy: 0 },
-        { name: "예제 5: 15 + 25 = 40 (짧은 수구 플러스)", cue: {x: -11, z: -5}, b1: {x: -13, z: -3}, b2: {x: 5, z: 5}, angle: 170, pow: 14, sx: 2, sy: 0 },
-        { name: "예제 6: 30 + 20 = 50 (대각선 플러스)", cue: {x: -2, z: -5}, b1: {x: -13, z: -2}, b2: {x: 10, z: 5}, angle: 150, pow: 18, sx: 3, sy: 0 },
-        { name: "예제 7: 35 + 15 = 50 (코너 깊은 수구)", cue: {x: 1, z: -5}, b1: {x: -13, z: 0}, b2: {x: 10, z: 5}, angle: 145, pow: 18, sx: 3, sy: 0 },
-        { name: "예제 8: 10 + 30 = 40 (극단 짧은 수구)", cue: {x: -13, z: -5}, b1: {x: -13, z: -4}, b2: {x: 5, z: 5}, angle: 175, pow: 14, sx: 2, sy: 0 },
-        { name: "예제 9: 25 + 25 = 50 (표준 대회전 각)", cue: {x: -5, z: -5}, b1: {x: -13, z: -3}, b2: {x: 10, z: 5}, angle: 158, pow: 17, sx: 2.5, sy: 0 },
-        { name: "예제 10: 20 + 15 = 35 (짧은 반사 각)", cue: {x: -8, z: -5}, b1: {x: -13, z: 0}, b2: {x: 2, z: 5}, angle: 155, pow: 15, sx: 2, sy: 0 }
+        { name: "20 + 20 = 40 [플러스 옆돌리기]", cue: {x: -8, z: -2}, b1: {x: -12, z: 2}, b2: {x: 5, z: 5}, offset: -1.5, pow: 15, sx: 2, sy: 0 },
+        { name: "30 + 10 = 40 [긴 수구 비껴치기]", cue: {x: -2, z: -3}, b1: {x: -8, z: 1}, b2: {x: 5, z: 5}, offset: 1.6, pow: 16, sx: 2.5, sy: 1 },
+        { name: "25 + 15 = 40 [중앙 플러스]", cue: {x: -5, z: -2}, b1: {x: -10, z: 0}, b2: {x: 5, z: 5}, offset: -1.4, pow: 15, sx: 2, sy: 0 },
+        { name: "20 + 30 = 50 [길게 세워치기]", cue: {x: -8, z: -1}, b1: {x: -12, z: 3}, b2: {x: 10, z: 5}, offset: 1.5, pow: 17, sx: 3, sy: -1 },
+        { name: "15 + 25 = 40 [짧은 수구 빗겨치기]", cue: {x: -11, z: -2}, b1: {x: -13, z: 2}, b2: {x: 5, z: 5}, offset: 1.8, pow: 14, sx: 2, sy: 0 },
+        { name: "30 + 20 = 50 [대각선 플러스]", cue: {x: -2, z: -4}, b1: {x: -7, z: 2}, b2: {x: 10, z: 5}, offset: -1.6, pow: 18, sx: 3, sy: 0 },
+        { name: "35 + 15 = 50 [코너 깊은 옆돌리기]", cue: {x: 1, z: -4}, b1: {x: -6, z: 1}, b2: {x: 10, z: 5}, offset: -1.5, pow: 18, sx: 3, sy: 0 },
+        { name: "10 + 30 = 40 [극단 짧은 세워치기]", cue: {x: -12, z: -2}, b1: {x: -13, z: 1}, b2: {x: 5, z: 5}, offset: 2.0, pow: 14, sx: 2, sy: -1 },
+        { name: "25 + 25 = 50 [표준 대회전 플러스]", cue: {x: -5, z: -3}, b1: {x: -11, z: 2}, b2: {x: 10, z: 5}, offset: -1.7, pow: 17, sx: 2.5, sy: 0 },
+        { name: "20 + 15 = 35 [짧은 반사 각]", cue: {x: -8, z: -2}, b1: {x: -11, z: 0}, b2: {x: 2, z: 5}, offset: -1.4, pow: 15, sx: 2, sy: 0 }
     ]
 };
 
@@ -357,13 +357,13 @@ function drawSystemLabels(mode) {
     let labels = [];
 
     if(mode === 'fiveHalf') {
-        for(let i=1; i<=7; i++) labels.push({t: i*10, x: w2 - dw*i, z: -h2 - 1.2, c: "#f1c40f"}); // 1C
+        for(let i=1; i<=7; i++) labels.push({t: i*10, x: w2 - dw*i, z: -h2 - 1.2, c: "#f1c40f"}); 
         labels.push({t: "50", x: w2, z: h2 + 1.2, c: "#ffffff"}); 
         for(let i=1; i<=7; i++) labels.push({t: 50 - i*5, x: w2 - dw*i, z: h2 + 1.2, c: "#ffffff"});
         labels.push({t: "60", x: w2 + 1.2, z: h2 - dh*1, c: "#ffffff"});
         labels.push({t: "70", x: w2 + 1.2, z: h2 - dh*2, c: "#ffffff"});
         labels.push({t: "90", x: w2 + 1.2, z: h2 - dh*3, c: "#ffffff"});
-        labels.push({t: "10", x: -w2 - 1.2, z: -h2 + dh*1, c: "#2ecc71"}); // 3C
+        labels.push({t: "10", x: -w2 - 1.2, z: -h2 + dh*1, c: "#2ecc71"}); 
         labels.push({t: "20", x: -w2 - 1.2, z: -h2 + dh*2, c: "#2ecc71"});
         labels.push({t: "30", x: -w2 - 1.2, z: -h2 + dh*3, c: "#2ecc71"});
         labels.push({t: "40", x: -w2, z: h2 + 1.2, c: "#2ecc71"});
@@ -422,12 +422,18 @@ function loadSelectedPreset() {
     objectBall1.position.set(p.b1.x, tableSpec.ballR, p.b1.z);
     objectBall2.position.set(p.b2.x, tableSpec.ballR, p.b2.z);
 
-    document.getElementById('aimAngle').value = p.angle;
+    // 1적구를 정확히 겨냥하도록 수학적 각도 계산 후 오프셋 적용
+    let dx = p.b1.x - p.cue.x;
+    let dz = p.b1.z - p.cue.z;
+    let baseAngle = Math.atan2(dz, dx) * 180 / Math.PI;
+    let finalAngle = (baseAngle + p.offset + 360) % 360;
+
+    document.getElementById('aimAngle').value = finalAngle.toFixed(1);
     document.getElementById('power').value = p.pow;
     document.getElementById('spinX').value = p.sx;
     document.getElementById('spinY').value = p.sy;
 
-    updateAngleLabel(p.angle);
+    updateAngleLabel(finalAngle.toFixed(1));
     updatePowerLabel(p.pow);
     updateSpinXLabel(p.sx);
     updateSpinYLabel(p.sy);
@@ -436,13 +442,17 @@ function loadSelectedPreset() {
     syncRealStatesFromMeshes();
     updateAimLine();
 
+    // 학습자 가이드 텍스트 업데이트
     document.getElementById('preset-title-display').style.display = 'block';
     let sysName = (mode === 'fiveHalf') ? '파이브 앤 하프' : '플러스 시스템';
-    document.getElementById('preset-name').innerText = `[${sysName}] ${p.name.split('(')[0]}`; 
+    document.getElementById('preset-name').innerText = `[${sysName}] ${p.name}`; 
     
     let sxTxt = p.sx > 0 ? `우 ${p.sx} Tip` : (p.sx < 0 ? `좌 ${Math.abs(p.sx)} Tip` : `무회전`);
     let syTxt = p.sy > 0 ? `상단 ${p.sy} Tip` : (p.sy < 0 ? `하단 ${Math.abs(p.sy)} Tip` : `중앙`);
-    document.getElementById('preset-guide').innerText = `💡 권장: 당점 [${sxTxt} / ${syTxt}], 속도 [${p.pow}m/s]`;
+    
+    document.getElementById('preset-guide').innerHTML = 
+        `💡 권장: 당점 [${sxTxt} / ${syTxt}], 속도 [${p.pow}m/s]` +
+        `<span class="preset-hint">(버튼으로 각도를 0.1°씩 미세 조정하며 완벽한 1쿠션 득점 경로를 찾아보세요!)</span>`;
 
     drawSystemLabels(mode);
 }

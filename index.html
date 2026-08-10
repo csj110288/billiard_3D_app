@@ -96,6 +96,11 @@
             box-shadow: 0 0 4px rgba(0,0,0,0.8);
         }
         
+        /* 2D 두께 조절 UI 스타일 */
+        #thickUI { position: relative; width: 120px; height: 50px; margin: 10px auto; }
+        #thickTarget { position: absolute; left: 40px; top: 5px; width: 40px; height: 40px; border-radius: 50%; background: #cc1111; box-shadow: inset -3px -3px 8px rgba(0,0,0,0.5); }
+        #thickCue { position: absolute; left: 40px; top: 5px; width: 40px; height: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255,255,255,0.4); pointer-events: none; transition: left 0.1s; }
+
         .btn-group { display: flex; gap: 6px; margin-top: 4px; }
         button { flex: 1; padding: 10px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; transition: 0.2s; }
         button:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -219,6 +224,23 @@
                 </div>
             </div>
 
+            <!-- 신규 추가된 2D 두께 UI 섹션 -->
+            <div class="group" style="align-items: center; background: #252525; padding: 12px; border-radius: 4px; border: 1px solid #333;">
+                <label style="color: #f1c40f;">🎯 1목적구 겨냥 두께 (Thickness)</label>
+                
+                <div id="thickUI">
+                    <div id="thickTarget"></div>
+                    <div id="thickCue"></div>
+                </div>
+                
+                <div style="width: 100%; display: flex; justify-content: space-between; font-size: 10px; color: #888; margin-bottom: 4px;">
+                    <span>좌측 얇게</span><span>정면</span><span>우측 얇게</span>
+                </div>
+                <input type="range" id="thickSlider" min="-8" max="8" step="0.1" value="0" oninput="onThickSliderChange(this.value)">
+                
+                <span id="thickText" class="thick-disp" style="text-align: center; width: 100%; margin-top: 6px; font-size: 13px;">정면 (8/8)</span>
+            </div>
+
             <div class="group">
                 <label for="strokeType">스트로크 타법 (Stroke Type):</label>
                 <select id="strokeType" onchange="updateAimLine()">
@@ -252,11 +274,6 @@
                     <button class="btn-fine" onclick="adjustAngle(0.1)">+0.1° ▶</button>
                     <button class="btn-fine" onclick="adjustAngle(0.5)">+0.5° ▶</button>
                 </div>
-            </div>
-
-            <div class="group" style="background: #252525; padding: 8px; border-radius: 4px; border: 1px solid #333;">
-                <label>🎯 겨냥 목적구 & 두께:</label>
-                <span id="thicknessVal" class="thick-disp">계산 중...</span>
             </div>
 
             <div class="btn-group">
@@ -301,10 +318,11 @@ let audioCtx = null;
 let realBallStates = [];
 
 let kissOccurredInShot = false; 
+let currentTargetBall = null;
 
 const SYSTEM_PRESETS = {
     fiveHalf: [
-        { name: "옆돌리기 (파이브앤하프 응용)", type: "ballFirst", cue: {x: 4, z: 5}, b1: {x: -2, z: 0}, b2: {x: -10, z: -4}, pow: 16, sx: 2, sy: 1, stroke: "normal" },
+        { name: "옆돌리기 (파이브앤하프 응용)", type: "ballFirst", cue: {x: 10, z: 5}, b1: {x: 2, z: -2}, b2: {x: -10, z: 4}, pow: 16, sx: 2, sy: 0, stroke: "normal" },
         { name: "뒤돌리기 (파이브앤하프 응용)", type: "ballFirst", cue: {x: 8, z: 2}, b1: {x: 5, z: -3}, b2: {x: -12, z: 2}, pow: 17, sx: 2, sy: -0.5, stroke: "normal" },
         { name: "대회전 뒤돌리기", type: "ballFirst", cue: {x: 7, z: 5}, b1: {x: 2, z: -4}, b2: {x: -8, z: -2}, pow: 19, sx: 3, sy: 0, stroke: "normal" },
         { name: "짧은 비껴치기", type: "ballFirst", cue: {x: -5, z: 3}, b1: {x: -8, z: -1}, b2: {x: -12, z: 2}, pow: 15, sx: 2, sy: 0, stroke: "short" },
@@ -506,7 +524,6 @@ function evalShot(rad, preset, mode) {
                 let currentElasticity = tableSpec.cushionElasticity;
                 let currentSpinMult = 0.06;
 
-                // ★ 스트로크에 따른 쿠션 반발력/회전량 모듈식 통합 적용
                 if (b.id === 0) {
                     if (strokeSetting === 'short') {
                         currentElasticity *= 0.9;
@@ -712,14 +729,20 @@ function loadSelectedPreset() {
         
         let strokeName = (p.stroke === 'short') ? "숏(끊어치기)" : (p.stroke === 'long' ? "롱(밀어치기)" : "노멀(기본)");
 
+        let thicknessUI = "";
+        if (p.type !== 'bank') {
+            let thickStr = document.getElementById('thickText').innerText.replace("좌측 ", "").replace("우측 ", "");
+            thicknessUI = `<span style="color:#FF9900;">두께 [${thickStr}]</span>, `;
+        }
+
         if (aiResult.success) {
             document.getElementById('preset-guide').innerHTML = 
-                `💡 <b>모범 답안 세팅:</b> 당점 [${tipStr}], 파워 [${p.pow}m/s], 타법 [${strokeName}]<br>` +
+                `💡 <b>모범 답안 세팅:</b> ${thicknessUI}당점 [${tipStr}], 파워 [${p.pow}m/s], 타법 [${strokeName}]<br>` +
                 `<span class="preset-hint">🎯 <b>(시뮬레이터가 완벽한 득점 궤적을 자동으로 세팅했습니다. 샷 실행을 누르세요!)</b></span>`;
         } else {
             document.getElementById('preset-guide').innerHTML = 
-                `💡 <b>모범 답안 안내:</b> 당점 [${tipStr}], 파워 [${p.pow}m/s], 타법 [${strokeName}]<br>` +
-                `<span class="preset-hint" style="color:#e74c3c;">⚠️ <b>(최적 궤적을 찾는 중입니다. 십자 버튼으로 미세 조정을 해보세요!)</b></span>`;
+                `💡 <b>모범 답안 안내:</b> ${thicknessUI}당점 [${tipStr}], 파워 [${p.pow}m/s], 타법 [${strokeName}]<br>` +
+                `<span class="preset-hint" style="color:#e74c3c;">⚠️ <b>(최적 궤적을 찾는 중입니다. 미세 조정을 해보세요!)</b></span>`;
         }
 
         drawSystemLabels(mode);
@@ -774,6 +797,65 @@ function updateCueTipFromSliders() {
     let sx = parseFloat(document.getElementById('spinX').value) || 0;
     let sy = parseFloat(document.getElementById('spinY').value) || 0;
     updateCueTipDot(sx, sy);
+}
+
+function updateThickUIVisuals(val, colorHex) {
+    const targetDiv = document.getElementById('thickTarget');
+    const cueDiv = document.getElementById('thickCue');
+    const textDiv = document.getElementById('thickText');
+
+    if (colorHex === 0xcc1111) targetDiv.style.background = '#cc1111';
+    else if (colorHex === 0xf1c40f) targetDiv.style.background = '#f1c40f';
+    else targetDiv.style.background = '#e74c3c';
+
+    cueDiv.style.left = (40 + val * 5) + 'px';
+
+    let absVal = Math.abs(val);
+    let overlap = 1 - (absVal / 8);
+    let sideText = val < 0 ? "좌측 " : (val > 0 ? "우측 " : "");
+
+    let thickText = "";
+    let color = "#2ecc71";
+
+    if (overlap >= 0.9375) { thickText = "8/8 두께 (100% 정면)"; color = "#e74c3c"; sideText = "";}
+    else if (overlap >= 0.8125) { thickText = "7/8 두께"; color = "#e67e22"; }
+    else if (overlap >= 0.6875) { thickText = "6/8 두께 (3/4)"; color = "#f1c40f"; }
+    else if (overlap >= 0.5625) { thickText = "5/8 두께"; color = "#f39c12"; }
+    else if (overlap >= 0.4375) { thickText = "4/8 두께 (1/2)"; color = "#2ecc71"; }
+    else if (overlap >= 0.3125) { thickText = "3/8 두께"; color = "#1abc9c"; }
+    else if (overlap >= 0.1875) { thickText = "2/8 두께 (1/4)"; color = "#3498db"; }
+    else if (overlap >= 0.09375) { thickText = "1/8 두께"; color = "#9b59b6"; }
+    else if (overlap >= 0.02) { thickText = "0.5/8 두께 (얇게)"; color = "#e84393"; }
+    else { thickText = "스침 (매우 얇게)"; color = "#888"; }
+
+    textDiv.innerText = `${sideText}${thickText}`;
+    textDiv.style.color = color;
+}
+
+function onThickSliderChange(valStr) {
+    let val = parseFloat(valStr);
+    let target = window.currentTargetBall || (balls.length > 1 ? balls[1] : null);
+    if (!target) return;
+
+    let dx = target.position.x - cueBall.position.x;
+    let dz = target.position.z - cueBall.position.z;
+    let dist = Math.hypot(dx, dz);
+    let baseRad = Math.atan2(dz, dx);
+
+    let maxDist = tableSpec.ballR * 2;
+    let vDist = (Math.abs(val) / 8) * maxDist;
+
+    if (vDist > dist) vDist = dist * 0.99; 
+
+    let angleOffset = Math.asin(vDist / dist);
+    let newRad = baseRad + angleOffset * Math.sign(val);
+
+    let deg = (newRad * 180 / Math.PI + 360) % 360;
+    document.getElementById('aimAngle').value = deg.toFixed(1);
+    updateAngleLabel(deg.toFixed(1));
+    
+    updateThickUIVisuals(val, target.material.color.getHex());
+    updateAimLine();
 }
 
 function toggleHUD() {
@@ -1543,11 +1625,9 @@ function runVirtualTrajectory(rad) {
     }
 }
 
+// 💡 버그 수정: 목적구 좌/우 판별 로직의 부호(Sign) 수정 적용
 function calculateThickness(rad) {
     if (!cueBall || !balls || balls.length === 0) return;
-
-    const thicknessEl = document.getElementById('thicknessVal');
-    if (!thicknessEl) return;
 
     const dirX = Math.cos(rad);
     const dirZ = Math.sin(rad);
@@ -1569,45 +1649,35 @@ function calculateThickness(rad) {
 
             if (vDist < maxDist && t < minT) {
                 minT = t;
-                closestHit = {
-                    ball: ball,
-                    vDist: vDist
-                };
+                closestHit = { ball: ball, vDist: vDist, dx: dx, dz: dz };
             }
         }
     });
 
+    window.currentTargetBall = closestHit ? closestHit.ball : (window.currentTargetBall || (balls.length > 1 ? balls[1] : null));
+
     if (!closestHit) {
-        thicknessEl.innerText = "조준선에 맞는 공 없음 (빈쿠션/가락 우선)";
-        thicknessEl.style.color = "#888";
+        document.getElementById('thickText').innerText = "조준선에 맞는 공 없음";
+        document.getElementById('thickText').style.color = "#888";
+        document.getElementById('thickCue').style.opacity = '0';
         return;
     }
 
-    let ballName = "목적구";
-    let ballColorHex = closestHit.ball.material.color.getHex();
-    if (ballColorHex === 0xcc1111) {
-        ballName = "🔴 빨간 공";
-    } else if (ballColorHex === 0xf1c40f) {
-        ballName = "🟡 노란 공";
+    document.getElementById('thickCue').style.opacity = '1';
+
+    let cross = closestHit.dx * dirZ - closestHit.dz * dirX;
+    
+    // 외적 결과를 통한 좌/우 판별 부호 픽스 완료 (기존 -1 과 1 위치 스왑)
+    let sign = (cross > 0) ? 1 : -1; 
+
+    let val = (closestHit.vDist / maxDist) * 8 * sign;
+
+    const slider = document.getElementById('thickSlider');
+    if (document.activeElement !== slider) {
+        slider.value = val.toFixed(1);
     }
 
-    const overlap = 1 - (closestHit.vDist / maxDist);
-    let thickText = "";
-    let color = "#2ecc71";
-
-    if (overlap >= 0.9375) { thickText = "8/8 두께 (100% 정면)"; color = "#e74c3c"; }
-    else if (overlap >= 0.8125) { thickText = "7/8 두께"; color = "#e67e22"; }
-    else if (overlap >= 0.6875) { thickText = "6/8 두께 (3/4 두께)"; color = "#f1c40f"; }
-    else if (overlap >= 0.5625) { thickText = "5/8 두께"; color = "#f39c12"; }
-    else if (overlap >= 0.4375) { thickText = "4/8 두께 (1/2 반두께)"; color = "#2ecc71"; }
-    else if (overlap >= 0.3125) { thickText = "3/8 두께"; color = "#1abc9c"; }
-    else if (overlap >= 0.1875) { thickText = "2/8 두께 (1/4 두께)"; color = "#3498db"; }
-    else if (overlap >= 0.09375) { thickText = "1/8 두께"; color = "#9b59b6"; }
-    else if (overlap >= 0.02) { thickText = "0.5/8 두께 (얇게)"; color = "#e84393"; }
-    else { thickText = "스침 (얇게)"; color = "#888"; }
-
-    thicknessEl.innerText = `${ballName} : ${thickText}`;
-    thicknessEl.style.color = color;
+    updateThickUIVisuals(val, closestHit.ball.material.color.getHex());
 }
 
 function onPointerDown(event) {
@@ -1888,7 +1958,10 @@ function clearTrails() {
 function updateSystemHUD() {
     const mode = document.getElementById('systemMode').value;
     const t = document.getElementById('sysTitle'), f = document.getElementById('sysFormula');
-    if (mode === 'fiveHalf') { t.innerText = "3쿠션: 파이브 앤 하프 시스템"; f.innerHTML = '공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span>'; }
+    if (mode === 'fiveHalf') { 
+        t.innerText = "3쿠션: 파이브 앤 하프 시스템"; 
+        f.innerHTML = '공식: <span style="color:#f1c40f; font-weight:bold;">1쿠션</span> = <span style="color:#ffffff; font-weight:bold;">수구 수</span> - <span style="color:#2ecc71; font-weight:bold;">3쿠션 수</span>'; 
+    }
     else if (mode === 'plus') { t.innerText = "3쿠션: 플러스 시스템"; f.innerHTML = '공식: <span class="formula">1쿠션 = 수구 수 + 3쿠션 수</span>'; }
     else if (mode === 'fourBall') { t.innerText = "4구 당구 기본 기술 연습"; f.innerHTML = '목표: <span class="formula">빨간 공 2개를 모두 타격 (키스 주의)</span>'; }
     else { t.innerText = "기본 가이드 모드"; f.innerHTML = '공식: <span class="formula">입사각 = 반사각</span>'; }

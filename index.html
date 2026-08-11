@@ -89,14 +89,15 @@
             transition: width 0.3s, height 0.3s;
         }
         #cueTipDot {
-            width: 12px; height: 12px; border-radius: 50%;
+            border-radius: 50%;
             background: #e74c3c; position: absolute;
             top: 50%; left: 50%; transform: translate(-50%, -50%);
             border: 1.5px solid #fff; pointer-events: none;
             box-shadow: 0 0 4px rgba(0,0,0,0.8);
+            transition: width 0.3s, height 0.3s;
+            z-index: 5;
         }
         
-        /* 2D 두께 조절 UI 스타일 */
         #thickUI { position: relative; width: 120px; height: 50px; margin: 10px auto; }
         #thickTarget { position: absolute; left: 40px; top: 5px; width: 40px; height: 40px; border-radius: 50%; background: #cc1111; box-shadow: inset -3px -3px 8px rgba(0,0,0,0.5); }
         #thickCue { position: absolute; left: 40px; top: 5px; width: 40px; height: 40px; border-radius: 50%; border: 2px solid #fff; background: rgba(255,255,255,0.4); pointer-events: none; transition: left 0.1s; }
@@ -224,7 +225,6 @@
                 </div>
             </div>
 
-            <!-- 신규 추가된 2D 두께 UI 섹션 -->
             <div class="group" style="align-items: center; background: #252525; padding: 12px; border-radius: 4px; border: 1px solid #333;">
                 <label style="color: #f1c40f;">🎯 1목적구 겨냥 두께 (Thickness)</label>
                 
@@ -361,29 +361,59 @@ const SYSTEM_PRESETS = {
     ]
 };
 
+// 💡 0~3팁 표시 및 8방향 대각선, 삑사리 영역 시각화 업데이트
 function drawCueBallGuide() {
     const widget = document.getElementById('cueBallWidget');
     if (!widget) return;
     
-    let size = (currentGameMode === '4ball') ? 96 : 90;
-    widget.style.width = size + 'px';
-    widget.style.height = size + 'px';
+    // 3구: 61.5mm (반경 30.75mm), 4구: 65.5mm (반경 32.75mm)
+    const ballRadMm = (currentGameMode === '4ball') ? 32.75 : 30.75;
+    const sizePx = (currentGameMode === '4ball') ? 116 : 110; // UI 가시성 확보를 위해 픽셀 크기 소폭 확장
+    
+    widget.style.width = sizePx + 'px';
+    widget.style.height = sizePx + 'px';
 
-    let c = size / 2;
-    let maxR = c - 4; 
-    let r1 = maxR * 0.33;
-    let r2 = maxR * 0.66;
-    let r3 = maxR * 0.99;
+    const c = sizePx / 2;
+    const pxPerMm = c / ballRadMm; // UI 픽셀 대 밀리미터 환산 비율
 
-    let svgStr = `<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}'>
-        <circle cx='${c}' cy='${c}' r='${r1}' stroke='rgba(0,0,0,0.3)' stroke-width='0.8' fill='none'/>
-        <circle cx='${c}' cy='${c}' r='${r2}' stroke='rgba(0,0,0,0.3)' stroke-width='0.8' fill='none'/>
-        <circle cx='${c}' cy='${c}' r='${r3}' stroke='rgba(0,0,0,0.3)' stroke-width='0.8' fill='none'/>
-        <path d='M${c} 4 L${c} ${size-4} M4 ${c} L${size-4} ${c}' stroke='rgba(0,0,0,0.3)' stroke-width='0.8'/>
+    // 각 팁의 반경 (1T = 6mm)
+    const r0 = 6 * pxPerMm;  // 0팁 구역 (중앙 원, 큐팁 지름과 동일)
+    const r1 = 6 * pxPerMm;  // 1팁 반경 
+    const r2 = 12 * pxPerMm; // 2팁 반경
+    const r3 = 18 * pxPerMm; // 3팁 반경
+    
+    // 삑사리(Miscue) 위험 구역: 중심에서 20mm 지점부터 가장자리까지 붉은색 표시
+    const miscueInnerMm = 20; 
+    const miscueInnerPx = miscueInnerMm * pxPerMm;
+    const miscueWidthPx = (ballRadMm - miscueInnerMm) * pxPerMm;
+    const miscueCenterPx = miscueInnerPx + (miscueWidthPx / 2);
+
+    // 8방향 대각선 라인 계산 (45도, 135도)
+    const diagDist = c - 2; 
+    const cos45 = Math.cos(Math.PI / 4) * diagDist;
+    const sin45 = Math.sin(Math.PI / 4) * diagDist;
+
+    let svgStr = `<svg xmlns='http://www.w3.org/2000/svg' width='${sizePx}' height='${sizePx}'>
+        <!-- 삑사리(Miscue) 위험 구역 (붉은색 도넛 레이어) -->
+        <circle cx='${c}' cy='${c}' r='${miscueCenterPx}' stroke='rgba(231, 76, 60, 0.35)' stroke-width='${miscueWidthPx}' fill='none'/>
+        
+        <!-- 0팁 중앙원 (큐팁 사이즈) -->
+        <circle cx='${c}' cy='${c}' r='${r0}' stroke='rgba(255,255,255,0.6)' stroke-width='1.5' fill='rgba(255,255,255,0.1)'/>
+        
+        <!-- 1T, 2T, 3T 동심원 (가이드) -->
+        <circle cx='${c}' cy='${c}' r='${r1}' stroke='rgba(0,0,0,0.4)' stroke-width='0.8' fill='none'/>
+        <circle cx='${c}' cy='${c}' r='${r2}' stroke='rgba(0,0,0,0.4)' stroke-width='0.8' fill='none'/>
+        <circle cx='${c}' cy='${c}' r='${r3}' stroke='rgba(0,0,0,0.4)' stroke-width='0.8' fill='none'/>
+        
+        <!-- 기본 십자선 (12-6, 9-3) -->
+        <path d='M${c} 2 L${c} ${sizePx-2} M2 ${c} L${sizePx-2} ${c}' stroke='rgba(0,0,0,0.3)' stroke-width='0.8'/>
+        
+        <!-- 대각선 (10:30-4:30, 1:30-7:30) -->
+        <path d='M${c - cos45} ${c - sin45} L${c + cos45} ${c + sin45} M${c + cos45} ${c - sin45} L${c - cos45} ${c + sin45}' stroke='rgba(0,0,0,0.3)' stroke-width='0.8'/>
     </svg>`;
     
     let encodedSvg = encodeURIComponent(svgStr).replace(/'/g, "%27").replace(/"/g, "%22");
-    widget.style.background = `url("data:image/svg+xml;charset=utf8,${encodedSvg}"), radial-gradient(circle at 35% 35%, #ffffff, #bbb, #777)`;
+    widget.style.background = `url("data:image/svg+xml;charset=utf8,${encodedSvg}"), radial-gradient(circle at 35% 35%, #ffffff, #dcdcdc, #888888)`;
     widget.style.backgroundRepeat = 'no-repeat';
     widget.style.backgroundPosition = 'center';
     widget.style.backgroundSize = 'cover';
@@ -749,6 +779,7 @@ function loadSelectedPreset() {
     }, 50);
 }
 
+// 💡 삑사리 영역 및 제한 범위를 업데이트한 드래그 이벤트 함수
 function setup2DCueBallWidget() {
     const widget = document.getElementById('cueBallWidget');
     if (!widget) return;
@@ -762,13 +793,23 @@ function setup2DCueBallWidget() {
 
         let relX = clientX - rect.left - rect.width / 2;
         let relY = clientY - rect.top - rect.height / 2;
-        let maxR = rect.width / 2 - 8;
+        
+        const ballRadMm = (currentGameMode === '4ball') ? 32.75 : 30.75;
+        const maxRPx = rect.width / 2;
 
-        let dist = Math.hypot(relX, relY);
-        if (dist > maxR) { relX = (relX / dist) * maxR; relY = (relY / dist) * maxR; }
+        let mmX = (relX / maxRPx) * ballRadMm;
+        let mmY = (relY / maxRPx) * ballRadMm;
 
-        let sx = parseFloat(((relX / maxR) * 4).toFixed(1));
-        let sy = parseFloat((-(relY / maxR) * 4).toFixed(1));
+        // 당점 중심이 공 바깥쪽으로 아예 나가버리는 것(비현실적 조작)을 방지 (최대 1팁 거리 남김)
+        let maxAllowedMm = ballRadMm - 6; 
+        let distMm = Math.hypot(mmX, mmY);
+        if (distMm > maxAllowedMm) { 
+            mmX = (mmX / distMm) * maxAllowedMm;
+            mmY = (mmY / distMm) * maxAllowedMm;
+        }
+
+        let sx = parseFloat((mmX / 6).toFixed(1));
+        let sy = parseFloat((-mmY / 6).toFixed(1));
 
         document.getElementById('spinX').value = sx;
         document.getElementById('spinY').value = sy;
@@ -786,9 +827,23 @@ function setup2DCueBallWidget() {
 
 function updateCueTipDot(sx, sy) {
     const dot = document.getElementById('cueTipDot');
-    if (!dot) return;
-    let leftPct = 50 + (sx / 4) * 40;
-    let topPct = 50 - (sy / 4) * 40;
+    const widget = document.getElementById('cueBallWidget');
+    if (!dot || !widget) return;
+
+    const ballRadMm = (currentGameMode === '4ball') ? 32.75 : 30.75;
+    const sizePx = (currentGameMode === '4ball') ? 116 : 110;
+    const pxPerMm = (sizePx / 2) / ballRadMm;
+
+    const dotSize = 12 * pxPerMm;
+    dot.style.width = dotSize + 'px';
+    dot.style.height = dotSize + 'px';
+
+    let distX = sx * 6;
+    let distY = sy * 6;
+
+    let leftPct = 50 + (distX / ballRadMm) * 50;
+    let topPct = 50 - (distY / ballRadMm) * 50;
+    
     dot.style.left = leftPct + '%';
     dot.style.top = topPct + '%';
 }
@@ -1451,6 +1506,7 @@ function changeTableType() {
         : { width: 24.4, height: 12.2, ballR: ballR, friction: 0.984, cushionElasticity: 0.73 };
     buildTable(); 
     createBalls();
+    drawCueBallGuide();
 }
 
 function updateAngleLabel(val) {
@@ -1625,7 +1681,6 @@ function runVirtualTrajectory(rad) {
     }
 }
 
-// 💡 버그 수정: 목적구 좌/우 판별 로직의 부호(Sign) 수정 적용
 function calculateThickness(rad) {
     if (!cueBall || !balls || balls.length === 0) return;
 
@@ -1666,8 +1721,6 @@ function calculateThickness(rad) {
     document.getElementById('thickCue').style.opacity = '1';
 
     let cross = closestHit.dx * dirZ - closestHit.dz * dirX;
-    
-    // 외적 결과를 통한 좌/우 판별 부호 픽스 완료 (기존 -1 과 1 위치 스왑)
     let sign = (cross > 0) ? 1 : -1; 
 
     let val = (closestHit.vDist / maxDist) * 8 * sign;

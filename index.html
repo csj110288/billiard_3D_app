@@ -162,7 +162,7 @@
                 <p id="sysFormula">공식: <span class="formula">1쿠션 = 수구 수 - 3쿠션 수</span></p>
                 <button id="hudPovBtn" class="btn-pov" onclick="toggleCameraPOV()">👁️ 선수 시점 (Cue POV) 켜기</button>
                 <p class="guide-text">
-                    👉 <b>화면 드래그</b>: 큐스틱 중심 정밀 겨냥<br>
+                    👉 <b>당구대 클릭/드래그</b>: 목적구/쿠션 지점 자유 겨냥 (360°)<br>
                     🎱 <b>공 클릭 후 드래그</b>: 공 수동 위치 이동<br>
                     📚 <b>시스템 연습</b>: 정답 가이드 제공
                 </p>
@@ -314,9 +314,8 @@ const REPLAY_SPEED = 0.3;
 let isDraggingBall = false;
 let isDraggingAim = false;
 let draggedBall = null;
-let pointerStartAngle = 0;
 
-let isCuePOV = false; // 선수 시점 카메라 상태
+let isCuePOV = false;
 
 let currentGameMode = '3ball';
 let tableSpec = { width: 28.44, height: 14.22, ballR: 0.3075, friction: 0.991, cushionElasticity: 0.82 };
@@ -371,7 +370,6 @@ const SYSTEM_PRESETS = {
     ]
 };
 
-// 💡 선수 시점 카메라 위치 업데이트 함수
 function updateCameraPOV() {
     if (!cueBall || !camera) return;
 
@@ -379,7 +377,6 @@ function updateCameraPOV() {
         const angleDeg = parseFloat(document.getElementById('aimAngle').value);
         const rad = (angleDeg * Math.PI) / 180;
         
-        // 큐스틱 뒤쪽 거리 16, 눈높이 3.2
         const distBehind = 16;
         const eyeHeight = 3.2;
 
@@ -389,7 +386,6 @@ function updateCameraPOV() {
 
         camera.position.set(camX, camY, camZ);
         
-        // 큐스틱이 향하는 정면 타겟 지점 주시
         const lookTarget = new THREE.Vector3(
             cueBall.position.x + Math.cos(rad) * 25,
             cueBall.position.y,
@@ -399,7 +395,7 @@ function updateCameraPOV() {
         camera.lookAt(lookTarget);
         if (controls) {
             controls.target.copy(lookTarget);
-            controls.enabled = false; // POV 모드일 때는 오비트 컨트롤 잠금
+            controls.enabled = false;
         }
     }
 }
@@ -572,7 +568,7 @@ function evalShot(rad, preset, mode) {
                         let vx1 = b1.vx * cos + b1.vz * sin;
                         let vz1 = b1.vz * cos - b1.vx * sin;
                         let vx2 = b2.vx * cos + b2.vz * sin;
-                        let vz2 = b2.vx * cos - b2.vx * sin;
+                        let vz2 = b2.vz * cos - b2.vx * sin;
 
                         let newVx1 = vx2, newVz1 = vz1, newVx2 = vx1, newVz2 = vz2;
                         
@@ -1734,6 +1730,7 @@ function runVirtualTrajectory(rad) {
     }
 }
 
+// 💡 뱅크샷(빈쿠션) 및 1적구 조준 상태를 반영하도록 두께 계산 함수 개선
 function calculateThickness(rad) {
     if (!cueBall || !balls || balls.length === 0) return;
 
@@ -1764,9 +1761,10 @@ function calculateThickness(rad) {
 
     window.currentTargetBall = closestHit ? closestHit.ball : (window.currentTargetBall || (balls.length > 1 ? balls[1] : null));
 
+    // 뱅크샷 (겨냥선상에 공이 맞지 않을 때)
     if (!closestHit) {
-        document.getElementById('thickText').innerText = "조준선에 맞는 공 없음";
-        document.getElementById('thickText').style.color = "#888";
+        document.getElementById('thickText').innerText = "뱅크샷 (빈쿠션 조준 중)";
+        document.getElementById('thickText').style.color = "#3498db";
         document.getElementById('thickCue').style.opacity = '0';
         return;
     }
@@ -1786,7 +1784,30 @@ function calculateThickness(rad) {
     updateThickUIVisuals(val, closestHit.ball.material.color.getHex());
 }
 
-// 💡 큐스틱 중심 드래그 조준 핸들러
+// 💡 3D 당구대 표면 클릭/드래그를 통해 큐스틱 360도 자유 겨냥 핸들러
+function setAimFromTablePoint(clientX, clientY) {
+    const viewport = document.getElementById('viewport');
+    const rect = viewport.getBoundingClientRect();
+    mouse.x = ((clientX - rect.left) / viewport.clientWidth) * 2 - 1;
+    mouse.y = -((clientY - rect.top) / viewport.clientHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), -tableSpec.ballR);
+    const targetPoint = new THREE.Vector3();
+
+    if (raycaster.ray.intersectPlane(plane, targetPoint)) {
+        const dx = targetPoint.x - cueBall.position.x;
+        const dz = targetPoint.z - cueBall.position.z;
+        let deg = Math.atan2(dz, dx) * (180 / Math.PI);
+        if (deg < 0) deg += 360;
+
+        let formattedDeg = parseFloat(deg.toFixed(2));
+        document.getElementById('aimAngle').value = formattedDeg;
+        updateAngleLabel(formattedDeg);
+        updateAimLine();
+    }
+}
+
 function onPointerDown(event) {
     if (isSimulating || isReplaying || event.button !== 0) return;
 
@@ -1807,7 +1828,7 @@ function onPointerDown(event) {
         if (controls) controls.enabled = false;
     } else {
         isDraggingAim = true;
-        pointerStartAngle = parseFloat(document.getElementById('aimAngle').value) || 0;
+        setAimFromTablePoint(event.clientX, event.clientY);
         if (controls && isCuePOV) controls.enabled = false;
     }
 }
@@ -1859,14 +1880,7 @@ function onPointerMove(event) {
             updateAimLine();
         }
     } else if (isDraggingAim) {
-        // 드래그 거리에 비례하여 큐스틱 조준 각도를 0.05° 정밀도로 부드럽게 회전
-        const deltaX = event.clientX - pointerStartX;
-        const sensitivity = 0.08; 
-        let newAngle = (pointerStartAngle + deltaX * sensitivity + 360) % 360;
-
-        document.getElementById('aimAngle').value = newAngle.toFixed(2);
-        updateAngleLabel(newAngle.toFixed(2));
-        updateAimLine();
+        setAimFromTablePoint(event.clientX, event.clientY);
     }
 }
 
